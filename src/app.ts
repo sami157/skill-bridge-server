@@ -3,6 +3,7 @@ import express, { type Application } from "express";
 import { auth } from "./lib/auth";
 import cors from "cors";
 import { categoryRouter } from "./modules/categories/category.route";
+import { subjectRouter } from "./modules/subjects/subjects.route";
 
 const app:Application = express();
 app.all('/api/auth/{*splat}', toNodeHandler(auth));
@@ -11,6 +12,7 @@ app.use(cors());
 app.use(express.json());
 
 app.use('/categories', categoryRouter)
+app.use('/subjects', subjectRouter)
 
 app.get("/", (req, res) => {
     res.send("Hello, this is Skill Bridge server!");
