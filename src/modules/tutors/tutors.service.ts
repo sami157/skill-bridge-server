@@ -58,6 +58,54 @@ const updateTutorProfile = async (data: UpdateTutorProfileInput) => {
     return result;
 };
 
+const getAllTutorProfiles = async () => {
+    const tutors = await prisma.tutorProfile.findMany({
+        include: {
+            user: {
+                select: {
+                    id: true,
+                    name: true,
+                    image: true,
+                    email: true,
+                },
+            },
+            subjects: true,
+        },
+    });
+
+    return tutors;
+};
+
+
+const getTutorProfileById = async (id: string) => {
+    const tutor = await prisma.tutorProfile.findUnique({
+        where: { id },
+        include: {
+            user: {
+                select: {
+                    id: true,
+                    name: true,
+                    image: true,
+                    email: true,
+                },
+            },
+            subjects: true,
+            bookingsAsTutor: {
+                include: {
+                    review: true, // include review for completed sessions
+                },
+            },
+        },
+    });
+
+    if (!tutor) {
+        throw new Error("Tutor not found");
+    }
+
+    return tutor;
+};
+
+
 
 export const tutorProfileService = {
     createTutorProfile,
