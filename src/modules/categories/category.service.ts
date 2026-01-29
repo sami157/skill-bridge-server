@@ -25,6 +25,7 @@ const getAllCategories = async () => {
     return result;
 }
 
+
 export const categoryService =  { 
     createCategory, 
     getAllCategories 

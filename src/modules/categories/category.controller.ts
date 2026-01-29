@@ -34,5 +34,5 @@ const createCategory = async (req: Request, res: Response) => {
 
 export {
     getAllCategories,
-    createCategory
+    createCategory,
 };
