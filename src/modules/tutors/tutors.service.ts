@@ -1,28 +1,15 @@
-// src/modules/tutorProfile/tutorProfile.service.ts
-import type { TutorProfile } from "../../../generated/prisma/client";
 import { prisma } from "../../lib/prisma";
+import type { CreateTutorProfileInput, TutorSearchFilters, UpdateTutorProfileInput } from "../../lib/utils/interfaces";
 
-interface CreateTutorProfileInput {
-    userId: string;
-    bio?: string;
-    subjectsIds: string[];
-    availability?: any;
-}
-
-interface UpdateTutorProfileInput {
-    userId: string;
-    bio?: string | null;
-    subjectsIds?: string[];
-    availability?: any | null;
-}
 
 const createTutorProfile = async (data: CreateTutorProfileInput) => {
-    const { userId, bio, subjectsIds, availability } = data;
+    const { userId, bio, subjectsIds, availability, pricePerHour } = data;
 
     const result = await prisma.tutorProfile.create({
         data: {
             userId,
             bio: bio || null,
+            pricePerHour,
             availability,
             subjects: {
                 connect: subjectsIds.map((id) => ({ id })),
@@ -37,12 +24,13 @@ const createTutorProfile = async (data: CreateTutorProfileInput) => {
 };
 
 const updateTutorProfile = async (data: UpdateTutorProfileInput) => {
-    const { userId, bio, subjectsIds, availability } = data;
+    const { userId, bio, subjectsIds, availability, pricePerHour } = data;
 
     const updateData: any = {};
 
     if (bio !== undefined) updateData.bio = bio ?? null;
     if (availability !== undefined) updateData.availability = availability ?? null;
+    if (pricePerHour !== undefined) updateData.pricePerHour = pricePerHour;
     if (subjectsIds !== undefined) {
         updateData.subjects = { set: subjectsIds.map((id) => ({ id })) };
     }
@@ -58,18 +46,53 @@ const updateTutorProfile = async (data: UpdateTutorProfileInput) => {
     return result;
 };
 
-const getAllTutorProfiles = async () => {
+const getAllTutorProfiles = async (filters: TutorSearchFilters) => {
+    const { subjectId, categoryId, minRating, maxPrice } = filters;
+
     const tutors = await prisma.tutorProfile.findMany({
+        where: {
+            ...(minRating !== undefined && {
+                rating: {
+                    gte: minRating,
+                },
+            }),
+
+            ...(maxPrice !== undefined && {
+                pricePerHour: {
+                    lte: maxPrice,
+                },
+            }),
+
+            ...(subjectId && {
+                subjects: {
+                    some: {
+                        id: subjectId,
+                    },
+                },
+            }),
+
+            ...(categoryId && {
+                subjects: {
+                    some: {
+                        categoryId,
+                    },
+                },
+            }),
+        },
+
         include: {
             user: {
                 select: {
                     id: true,
                     name: true,
                     image: true,
-                    email: true,
                 },
             },
-            subjects: true,
+            subjects: {
+                include: {
+                    category: true,
+                },
+            },
         },
     });
 
@@ -109,5 +132,7 @@ const getTutorProfileById = async (id: string) => {
 
 export const tutorProfileService = {
     createTutorProfile,
-    updateTutorProfile
+    updateTutorProfile,
+    getAllTutorProfiles,
+    getTutorProfileById
 };

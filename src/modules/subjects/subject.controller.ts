@@ -1,6 +1,5 @@
 import type { Request, Response } from "express"
 import { subjectService } from "./subject.service";
-import { categoryService } from "../categories/category.service";
 
 const createSubject = async (req:Request, res: Response) => {
     try {

@@ -52,6 +52,9 @@ model TutorProfile {
   subjects        Subject[]
   bookingsAsTutor Booking[]
   availability    Json?
+  pricePerHour    Float
+  reviewCount     Int        @default(0)
+  rating          Float     @default(0)
 
   @@map("tutor_profiles")
 }
