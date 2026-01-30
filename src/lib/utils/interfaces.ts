@@ -1,3 +1,5 @@
+import type { BookingStatus, Role } from "../../../generated/prisma/enums";
+
 interface CreateTutorProfileInput {
     userId: string;
     bio?: string;
@@ -22,8 +24,31 @@ interface TutorSearchFilters {
     sortBy?: "rating_asc" | "rating_desc" | "price_asc" | "price_desc";
 }
 
+interface CreateBookingPayload {
+    studentId: string;
+    tutorId: string;
+    startTime: Date;
+    endTime: Date;
+}
+
+interface GetBookingsParams {
+    userId: string;
+    role: Omit<Role, "ADMIN">;
+    status?: BookingStatus;
+}
+
+interface CreateReviewInput {
+    bookingId: string;
+    studentId: string;
+    rating: number;
+    comment?: string;
+}
+
 export type { 
     CreateTutorProfileInput,
     UpdateTutorProfileInput, 
-    TutorSearchFilters 
+    TutorSearchFilters,
+    CreateReviewInput,
+    CreateBookingPayload,
+    GetBookingsParams
 };
