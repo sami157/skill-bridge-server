@@ -44,11 +44,18 @@ interface CreateReviewInput {
     comment?: string;
 }
 
+interface UpdateStudentProfileInput  {
+    name: string;
+    phone: string;
+    image: string;
+};
+
 export type { 
     CreateTutorProfileInput,
     UpdateTutorProfileInput, 
     TutorSearchFilters,
     CreateReviewInput,
     CreateBookingPayload,
-    GetBookingsParams
+    GetBookingsParams,
+    UpdateStudentProfileInput
 };
