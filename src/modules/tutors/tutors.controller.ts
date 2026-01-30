@@ -1,5 +1,6 @@
 import type { Request, Response } from "express"
 import { tutorProfileService } from "./tutors.service";
+import type { TutorSearchFilters } from "../../lib/utils/interfaces";
 
 const createTutorProfile = async (req: Request, res: Response) => {
     try {
@@ -35,7 +36,8 @@ const updateTutorProfile = async (req: Request, res: Response) => {
 
 const getAllTutorProfiles = async (req: Request, res: Response) => {
     try {
-        const result = await tutorProfileService.getAllTutorProfiles();
+        const filters = req.query;
+        const result = await tutorProfileService.getAllTutorProfiles(filters as TutorSearchFilters);
 
         res.status(200).json({
             success: true,

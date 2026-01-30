@@ -47,7 +47,25 @@ const updateTutorProfile = async (data: UpdateTutorProfileInput) => {
 };
 
 const getAllTutorProfiles = async (filters: TutorSearchFilters) => {
-    const { subjectId, categoryId, minRating, maxPrice } = filters;
+    const { subjectId, categoryId, minRating, maxPrice, sortBy } = filters;
+
+    let orderBy: any = undefined;
+
+    if (sortBy === "rating_asc") {
+        orderBy = { rating: "asc" };
+    }
+
+    if (sortBy === "rating_desc") {
+        orderBy = { rating: "desc" };
+    }
+
+    if (sortBy === "price_asc") {
+        orderBy = { pricePerHour: "asc" };
+    }
+
+    if (sortBy === "price_desc") {
+        orderBy = { pricePerHour: "desc" };
+    }
 
     const tutors = await prisma.tutorProfile.findMany({
         where: {
@@ -79,6 +97,8 @@ const getAllTutorProfiles = async (filters: TutorSearchFilters) => {
                 },
             }),
         },
+
+        orderBy,
 
         include: {
             user: {

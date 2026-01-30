@@ -19,6 +19,7 @@ interface TutorSearchFilters {
     categoryId?: string;
     minRating?: number;
     maxPrice?: number;
+    sortBy?: "rating_asc" | "rating_desc" | "price_asc" | "price_desc";
 }
 
 export type { 
