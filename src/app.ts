@@ -9,15 +9,18 @@ import { bookingRouter } from "./modules/bookings/bookings.route";
 import { usersRouter } from "./modules/users/users.route";
 
 const app:Application = express();
-const corsOptions = {
-  origin: ["http://localhost:3000"],
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-};
 
-app.use(cors(corsOptions));
-app.options("*", cors(corsOptions));
+app.use(
+  cors({
+    origin: ["http://localhost:3000"],
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
+
+
+app.options("*", cors());
 
 app.use(express.json());
 app.all("/api/auth/*", toNodeHandler(auth));

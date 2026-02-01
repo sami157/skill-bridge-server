@@ -1029,7 +1029,7 @@ var init_users_route = __esm({
 import { toNodeHandler } from "better-auth/node";
 import express5 from "express";
 import cors from "cors";
-var app, app_default;
+var app, corsOptions, app_default;
 var init_app = __esm({
   "src/app.ts"() {
     "use strict";
@@ -1040,17 +1040,16 @@ var init_app = __esm({
     init_bookings_route();
     init_users_route();
     app = express5();
-    app.use(
-      cors({
-        origin: ["http://localhost:3000"],
-        credentials: true,
-        methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allowedHeaders: ["Content-Type", "Authorization"]
-      })
-    );
-    app.options("*", cors());
+    corsOptions = {
+      origin: ["http://localhost:3000"],
+      credentials: true,
+      methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+      allowedHeaders: ["Content-Type", "Authorization"]
+    };
+    app.use(cors(corsOptions));
+    app.options("*", cors(corsOptions));
     app.use(express5.json());
-    app.all("/api/auth/{*splat}", toNodeHandler(auth));
+    app.all("/api/auth/*", toNodeHandler(auth));
     app.use("/categories", categoryRouter);
     app.use("/subjects", subjectRouter);
     app.use("/tutors", tutorRouter);
