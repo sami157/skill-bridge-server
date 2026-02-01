@@ -12,19 +12,20 @@ const app:Application = express();
 
 app.use(
   cors({
-    origin: ["http://localhost:3000"],
+    origin: (origin, callback) => {
+      const allowed =
+        !origin ||
+        /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+      callback(null, allowed ? origin || true : false);
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 
-
-app.options("*", cors());
-
 app.use(express.json());
-app.all("/api/auth/*", toNodeHandler(auth));
-
+app.all('/api/auth/{*splat}', toNodeHandler(auth));
 app.use('/categories', categoryRouter)
 app.use('/subjects', subjectRouter)
 app.use('/tutors', tutorRouter)
