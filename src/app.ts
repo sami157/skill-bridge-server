@@ -9,7 +9,7 @@ import { bookingRouter } from "./modules/bookings/bookings.route";
 import { usersRouter } from "./modules/users/users.route";
 
 const app:Application = express();
-app.all('/api/auth/{*splat}', toNodeHandler(auth));
+
 app.use(
   cors({
     origin: ["http://localhost:3000"],
@@ -23,7 +23,7 @@ app.use(
 app.options("*", cors());
 
 app.use(express.json());
-
+app.all('/api/auth/{*splat}', toNodeHandler(auth));
 app.use('/categories', categoryRouter)
 app.use('/subjects', subjectRouter)
 app.use('/tutors', tutorRouter)
