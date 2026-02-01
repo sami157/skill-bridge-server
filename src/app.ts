@@ -34,6 +34,16 @@ app.use('/users', usersRouter)
 
 app.get("/", (req, res) => {
     res.send("Hello, this is Skill Bridge server!");
-})
+});
+
+app.get("/health", (req, res) => {
+    res.json({ ok: true });
+});
+
+// Prevent serverless crash: catch errors and return 500 instead of crashing
+app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Internal Server Error" });
+});
 
 export default app;

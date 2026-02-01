@@ -81,7 +81,7 @@ globalThis["__dirname"] = path.dirname(fileURLToPath(import.meta.url));
 var PrismaClient = getPrismaClientClass();
 
 // src/lib/prisma.ts
-var connectionString = `${process.env.DATABASE_URL}`;
+var connectionString = process.env.DATABASE_URL ?? "";
 var adapter = new PrismaPg({ connectionString });
 var prisma = new PrismaClient({ adapter });
 
@@ -97,9 +97,6 @@ var auth = betterAuth({
     requireEmailVerification: false
   }
 });
-
-// src/app.ts
-import cors from "cors";
 
 // src/modules/categories/category.route.ts
 import express from "express";
@@ -879,17 +876,19 @@ var usersRouter = router5;
 
 // src/app.ts
 var app = express5();
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      const allowed = !origin || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
-      callback(null, allowed ? origin || true : false);
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"]
-  })
-);
+function corsHeaders(req, res, next) {
+  const origin = req.headers.origin;
+  res.setHeader("Access-Control-Allow-Origin", origin || "*");
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Origin, X-Requested-With, Cookie");
+  res.setHeader("Access-Control-Max-Age", "86400");
+  if (req.method === "OPTIONS") {
+    return res.status(204).end();
+  }
+  next();
+}
+app.use(corsHeaders);
 app.use(express5.json());
 app.all("/api/auth/{*splat}", toNodeHandler(auth));
 app.use("/categories", categoryRouter);
@@ -899,6 +898,13 @@ app.use("/bookings", bookingRouter);
 app.use("/users", usersRouter);
 app.get("/", (req, res) => {
   res.send("Hello, this is Skill Bridge server!");
+});
+app.get("/health", (req, res) => {
+  res.json({ ok: true });
+});
+app.use((err, _req, res, _next) => {
+  console.error(err);
+  res.status(500).json({ success: false, message: "Internal Server Error" });
 });
 var app_default = app;
 
