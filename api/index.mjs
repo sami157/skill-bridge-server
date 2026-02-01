@@ -906,9 +906,128 @@ var init_bookings_route = __esm({
   }
 });
 
+// src/modules/users/users.service.ts
+import "better-auth/api";
+var getStudentProfile, updateStudentProfile, usersService;
+var init_users_service = __esm({
+  "src/modules/users/users.service.ts"() {
+    "use strict";
+    init_prisma();
+    getStudentProfile = async (userId) => {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+          image: true,
+          role: true,
+          active: true,
+          createdAt: true,
+          updatedAt: true
+        }
+      });
+      if (!user) throw new Error("User not found");
+      return user;
+    };
+    updateStudentProfile = async (userId, data) => {
+      const updatedUser = await prisma.user.update({
+        where: { id: userId },
+        data: {
+          name: data.name,
+          phone: data.phone,
+          image: data.image
+        },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+          image: true,
+          role: true,
+          active: true,
+          createdAt: true,
+          updatedAt: true
+        }
+      });
+      return updatedUser;
+    };
+    usersService = {
+      getStudentProfile,
+      updateStudentProfile
+    };
+  }
+});
+
+// src/modules/users/users.controller.ts
+var getStudentProfile2, updateStudentProfile2, usersController;
+var init_users_controller = __esm({
+  "src/modules/users/users.controller.ts"() {
+    "use strict";
+    init_users_service();
+    getStudentProfile2 = async (req, res, next) => {
+      try {
+        if (!req.user) throw new Error("Unauthorized");
+        const userId = req.user.id;
+        const profile = await usersService.getStudentProfile(userId);
+        res.status(200).json({
+          success: true,
+          data: profile
+        });
+      } catch (error) {
+        res.status(400).json({
+          success: false,
+          message: error.message || "Failed to get profile"
+        });
+      }
+    };
+    updateStudentProfile2 = async (req, res, next) => {
+      try {
+        if (!req.user) throw new Error("Unauthorized");
+        const userId = req.user.id;
+        const { name, phone, image } = req.body;
+        const updatedProfile = await usersService.updateStudentProfile(userId, {
+          name,
+          phone,
+          image
+        });
+        res.status(200).json({
+          success: true,
+          data: updatedProfile
+        });
+      } catch (error) {
+        res.status(400).json({
+          success: false,
+          message: error.message || "Failed to update profile"
+        });
+      }
+    };
+    usersController = {
+      getStudentProfile: getStudentProfile2,
+      updateStudentProfile: updateStudentProfile2
+    };
+  }
+});
+
+// src/modules/users/users.route.ts
+import express4 from "express";
+var router5, usersRouter;
+var init_users_route = __esm({
+  "src/modules/users/users.route.ts"() {
+    "use strict";
+    init_users_controller();
+    init_verifyAuth();
+    router5 = express4.Router();
+    router5.get("/profile", verifyAuth("STUDENT" /* STUDENT */, "ADMIN" /* ADMIN */), usersController.getStudentProfile);
+    router5.put("/profile", verifyAuth("STUDENT" /* STUDENT */, "ADMIN" /* ADMIN */), usersController.updateStudentProfile);
+    usersRouter = router5;
+  }
+});
+
 // src/app.ts
 import { toNodeHandler } from "better-auth/node";
-import express4 from "express";
+import express5 from "express";
 import cors from "cors";
 var app, app_default;
 var init_app = __esm({
@@ -919,14 +1038,24 @@ var init_app = __esm({
     init_subjects_route();
     init_tutors_route();
     init_bookings_route();
-    app = express4();
+    init_users_route();
+    app = express5();
+    app.use(
+      cors({
+        origin: ["http://localhost:3000"],
+        credentials: true,
+        methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allowedHeaders: ["Content-Type", "Authorization"]
+      })
+    );
+    app.options("*", cors());
+    app.use(express5.json());
     app.all("/api/auth/{*splat}", toNodeHandler(auth));
-    app.use(cors());
-    app.use(express4.json());
     app.use("/categories", categoryRouter);
     app.use("/subjects", subjectRouter);
     app.use("/tutors", tutorRouter);
     app.use("/bookings", bookingRouter);
+    app.use("/users", usersRouter);
     app.get("/", (req, res) => {
       res.send("Hello, this is Skill Bridge server!");
     });
