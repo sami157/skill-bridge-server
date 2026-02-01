@@ -10,16 +10,18 @@ import { usersRouter } from "./modules/users/users.route";
 
 const app:Application = express();
 app.all('/api/auth/{*splat}', toNodeHandler(auth));
-
 app.use(
   cors({
-    origin: [
-      "http://localhost:3000",
-      "https://your-frontend-vercel-url.vercel.app",
-    ],
+    origin: ["http://localhost:3000"],
     credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
+
+
+app.options("*", cors());
+
 app.use(express.json());
 
 app.use('/categories', categoryRouter)
