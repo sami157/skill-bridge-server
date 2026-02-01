@@ -13,9 +13,12 @@ const app:Application = express();
 app.use(
   cors({
     origin: (origin, callback) => {
-      const allowed =
-        !origin ||
-        /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+      const localhost =
+        !origin || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+      const appUrl = process.env.APP_URL && origin === process.env.APP_URL;
+      const vercelPreview =
+        /^https:\/\/[a-z0-9-]+\.vercel\.app$/.test(origin || "");
+      const allowed = localhost || appUrl || vercelPreview;
       callback(null, allowed ? origin || true : false);
     },
     credentials: true,
