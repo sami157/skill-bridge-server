@@ -10,15 +10,23 @@ import { usersRouter } from "./modules/users/users.route";
 
 const app:Application = express();
 
+// CORS: allow frontend origin so browser doesn't block requests
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim())
+  : [];
+
 app.use(
   cors({
     origin: (origin, callback) => {
+      const noOrigin = !origin; // same-origin or non-browser
       const localhost =
-        !origin || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+        noOrigin || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
       const appUrl = process.env.APP_URL && origin === process.env.APP_URL;
-      const vercelPreview =
-        /^https:\/\/[a-z0-9-]+\.vercel\.app$/.test(origin || "");
-      const allowed = localhost || appUrl || vercelPreview;
+      const allowList = allowedOrigins.includes(origin || "");
+      const vercelHost =
+        /^https:\/\/[^/]+\.vercel\.app$/.test(origin || "");
+      const allowed =
+        localhost || appUrl || allowList || vercelHost;
       callback(null, allowed ? origin || true : false);
     },
     credentials: true,
