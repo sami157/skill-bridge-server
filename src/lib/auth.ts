@@ -42,6 +42,8 @@ export const auth = betterAuth({
   }),
   trustedOrigins,
   advanced: {
+    disableOriginCheck: true,
+    disableCSRFCheck: true,
     defaultCookieAttributes: isProduction
       ? { sameSite: "none", secure: true }
       : undefined,
