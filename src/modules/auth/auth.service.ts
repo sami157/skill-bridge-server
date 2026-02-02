@@ -3,7 +3,8 @@ import { SignJWT } from "jose";
 import { prisma } from "../../lib/prisma";
 import type { Role } from "../../../generated/prisma/enums";
 
-const LOGIN_TOKEN_TTL_SEC = 60;
+// Token used for API auth (Authorization: Bearer). Long-lived so user stays logged in.
+const LOGIN_TOKEN_TTL_SEC = 7 * 24 * 60 * 60; // 7 days
 
 const SALT_ROUNDS = 10;
 
