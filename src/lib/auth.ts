@@ -67,6 +67,11 @@ export const auth = betterAuth({
     provider: "postgresql",
   }),
   trustedOrigins,
+  user: {
+    additionalFields: {
+      role: { type: "string", input: false },
+    },
+  },
   advanced: {
     disableOriginCheck: true,
     disableCSRFCheck: true,
