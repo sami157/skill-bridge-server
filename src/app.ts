@@ -39,16 +39,28 @@ app.use(corsHeaders);
 
 app.use(express.json());
 
-// Fix "Illegal invocation": Better Auth (or deps) may call headers.get(name) with detached reference.
-// Express req.headers has no .get(); add a get() that works when called in any context (Node + Vercel).
+// Fix "Illegal invocation" and "invalid header value": Better Auth expects headers.get(name).
+// Mutating req.headers to add .get caused that function to be enumerated and passed to Headers.append.
+// Use a Proxy: target has only real header keys (so enumeration is safe), and .get is provided via the trap (non-enumerable).
 app.use("/api/auth", (req: Request, _res, next) => {
-  const raw = req.headers as IncomingHttpHeaders & Record<string, string | string[] | undefined>;
-  raw.get = function get(name: string): string | null {
-    const key = Object.keys(raw).find((k) => k !== "get" && k.toLowerCase() === name.toLowerCase());
-    const val = key ? raw[key] : undefined;
+  const raw = req.headers as IncomingHttpHeaders;
+  const plain: Record<string, string | string[] | undefined> = {};
+  for (const k of Object.keys(raw)) {
+    plain[k] = raw[k];
+  }
+  const headerGet = (name: string): string | null => {
+    const key = Object.keys(plain).find((k) => k.toLowerCase() === name.toLowerCase());
+    const val = key ? plain[key] : undefined;
     if (val === undefined) return null;
     return Array.isArray(val) ? val.join(", ") : val;
   };
+  (req as Request & { headers: typeof plain & { get: typeof headerGet } }).headers = new Proxy(plain, {
+    get(target, prop: string) {
+      if (prop === "get") return headerGet;
+      const v = target[prop];
+      return v;
+    },
+  }) as typeof req.headers;
   next();
 });
 
