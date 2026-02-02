@@ -171,10 +171,12 @@ const getTutorProfileById = async (id: string) => {
     return tutor;
 };
 
-/** All bookings for the tutor whose TutorProfile.userId = userId (schema: Booking.tutor -> TutorProfile.userId). */
+/** Bookings where tutorId = TutorProfile.id (schema: Booking.tutorId references TutorProfile.id). Resolve profile by userId first. */
 const getBookingsForTutorByUserId = async (userId: string) => {
+    const tutorProfile = await prisma.tutorProfile.findUnique({ where: { userId } });
+    if (!tutorProfile) return [];
     return prisma.booking.findMany({
-        where: { tutor: { userId } },
+        where: { tutorId: tutorProfile.id },
         orderBy: { startTime: "asc" },
         include: {
             student: { select: { id: true, name: true, email: true, image: true } },
