@@ -25,6 +25,13 @@ function corsHeaders(req: Request, res: Response, next: NextFunction) {
 app.use(corsHeaders);
 
 app.use(express.json());
+
+// Debug: log request Origin for auth routes (shows in Vercel logs)
+app.use("/api/auth", (req, _res, next) => {
+  const origin = req.headers.origin ?? req.headers.referer ?? "(none)";
+  console.log("[Better Auth] request Origin:", origin, "| path:", req.method, req.path);
+  next();
+});
 app.all('/api/auth/{*splat}', toNodeHandler(auth));
 app.use('/categories', categoryRouter)
 app.use('/subjects', subjectRouter)
