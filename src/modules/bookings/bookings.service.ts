@@ -10,10 +10,10 @@ const createBooking = async (payload: CreateBookingPayload) => {
         throw new Error("Invalid booking time range");
     }
 
-    // Booking.tutorId must be TutorProfile.id. Resolve: client may send userId or TutorProfile.id.
-    let tutorProfile = await prisma.tutorProfile.findUnique({ where: { userId: tutorIdFromPayload } });
+    // Schema: Booking.tutorId references TutorProfile.id. Resolve profile and store tutorProfile.id only.
+    let tutorProfile = await prisma.tutorProfile.findUnique({ where: { id: tutorIdFromPayload } });
     if (!tutorProfile) {
-        tutorProfile = await prisma.tutorProfile.findUnique({ where: { id: tutorIdFromPayload } });
+        tutorProfile = await prisma.tutorProfile.findUnique({ where: { userId: tutorIdFromPayload } });
     }
     if (!tutorProfile) {
         throw new Error("Tutor not found");
