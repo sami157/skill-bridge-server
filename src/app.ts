@@ -1,6 +1,5 @@
 import { toNodeHandler } from "better-auth/node";
 import express, { type Application, type Request, type Response, type NextFunction } from "express";
-import { auth } from "./lib/auth";
 import { categoryRouter } from "./modules/categories/category.route";
 import { subjectRouter } from "./modules/subjects/subjects.route";
 import { tutorRouter } from "./modules/tutors/tutors.route";
@@ -46,14 +45,28 @@ app.use("/api/auth", (req, _res, next) => {
   next();
 });
 
+// Debug: test DB connection and return actual error (so we can see what's wrong)
+app.get("/api/auth/debug-db", async (_req, res) => {
+  try {
+    const { prisma } = await import("./lib/prisma");
+    await prisma.$queryRaw`SELECT 1`;
+    const userCount = await prisma.user.count();
+    res.json({ ok: true, userCount, message: "DB connected" });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    console.error("[debug-db]", e);
+    res.status(500).json({ ok: false, error: message });
+  }
+});
+
 // Debug: check if a user exists and has credential account (no secrets). Must be before auth catch-all.
 app.get("/api/auth/debug-credentials", async (req, res) => {
-  const { prisma } = await import("./lib/prisma");
-  const email = typeof req.query.email === "string" ? req.query.email.trim().toLowerCase() : "";
-  if (!email) {
-    return res.status(400).json({ error: "Missing query param: email" });
-  }
   try {
+    const { prisma } = await import("./lib/prisma");
+    const email = typeof req.query.email === "string" ? req.query.email.trim().toLowerCase() : "";
+    if (!email) {
+      return res.status(400).json({ error: "Missing query param: email" });
+    }
     const user = await prisma.user.findUnique({
       where: { email },
       select: { id: true, email: true, name: true, accounts: { select: { providerId: true } } },
@@ -65,24 +78,33 @@ app.get("/api/auth/debug-credentials", async (req, res) => {
       accountProviderIds: user?.accounts?.map((a) => a.providerId) ?? [],
     });
   } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
     console.error("[debug-credentials]", e);
-    res.status(500).json({ error: "Database error" });
+    res.status(500).json({ error: "Database error", message });
   }
 });
 
-// Wrap Better Auth handler so 500s are caught and logged (Vercel logs)
-const authHandler = toNodeHandler(auth);
-app.use("/api/auth", (req: Request, res: Response, next: NextFunction) => {
-  const result = authHandler(req, res, next);
-  if (result && typeof (result as Promise<unknown>).catch === "function") {
-    (result as Promise<unknown>).catch((err: unknown) => {
-      if (res.headersSent) return;
-      console.error("[Better Auth] error:", err);
-      res.status(500).json({
-        error: "Authentication error",
-        message: err instanceof Error ? err.message : "Internal server error",
-      });
-    });
+// Load auth on first request so load-time errors (e.g. DATABASE_URL) are caught and returned
+app.use("/api/auth", async (req: Request, res: Response, next: NextFunction) => {
+  const sendError = (err: unknown) => {
+    if (res.headersSent) return;
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[Better Auth] error:", err);
+    res.status(500).json({ success: false, error: "Authentication error", message });
+  };
+  try {
+    const { auth } = await import("./lib/auth");
+    const authHandler = toNodeHandler(auth);
+    const wrappedNext: NextFunction = (err?: unknown) => {
+      if (err) return sendError(err);
+      next();
+    };
+    const result = authHandler(req, res, wrappedNext);
+    if (result && typeof (result as Promise<unknown>).catch === "function") {
+      (result as Promise<unknown>).catch(sendError);
+    }
+  } catch (err) {
+    sendError(err);
   }
 });
 
@@ -101,10 +123,12 @@ app.get("/health", (req, res) => {
     res.json({ ok: true });
 });
 
-// Prevent serverless crash: catch errors and return 500 instead of crashing
+// Global error handler: return actual error message so we can debug 500s
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
-    console.error(err);
-    res.status(500).json({ success: false, message: "Internal Server Error" });
+  if (res.headersSent) return;
+  const message = err instanceof Error ? err.message : String(err);
+  console.error("[App] error:", err);
+  res.status(500).json({ success: false, message });
 });
 
 export default app;
