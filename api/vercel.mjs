@@ -1,14 +1,10 @@
 import {
-  auth
-} from "./chunk-Y7OSXRMB.mjs";
-import {
   BookingStatus,
   Role,
   prisma
 } from "./chunk-L6OZA6O5.mjs";
 
 // src/app.ts
-import { toNodeHandler } from "better-auth/node";
 import express6 from "express";
 
 // src/modules/categories/category.route.ts
@@ -74,29 +70,67 @@ var createCategory2 = async (req, res) => {
   }
 };
 
+// src/lib/auth.ts
+import { jwtVerify } from "jose";
+var JWT_SECRET = process.env.NEXTAUTH_SECRET;
+if (!JWT_SECRET && process.env.NODE_ENV !== "test") {
+  console.warn("[Auth] NEXTAUTH_SECRET is not set; JWT verification will fail.");
+}
+var secret = JWT_SECRET ? new TextEncoder().encode(JWT_SECRET) : new Uint8Array(0);
+function getTokenFromRequest(req) {
+  const authHeader = req.headers.authorization;
+  if (authHeader?.startsWith("Bearer ")) {
+    return authHeader.slice(7);
+  }
+  const cookie = req.headers.cookie;
+  if (!cookie) return null;
+  const match = cookie.match(/(?:^|;\s*)next-auth\.session-token=([^;]*)/) ?? cookie.match(/(?:^|;\s*)__Secure-next-auth\.session-token=([^;]*)/);
+  return match ? decodeURIComponent(match[1].trim()) : null;
+}
+async function verifyNextAuthJwt(token) {
+  if (!secret.length) return null;
+  try {
+    const { payload } = await jwtVerify(token, secret);
+    return payload;
+  } catch {
+    return null;
+  }
+}
+async function getAuthUserFromRequest(req) {
+  const token = getTokenFromRequest(req);
+  if (!token) return null;
+  const payload = await verifyNextAuthJwt(token);
+  if (!payload?.sub) return null;
+  let role = payload.role;
+  if (role === void 0) {
+    const dbUser = await prisma.user.findUnique({
+      where: { id: payload.sub },
+      select: { role: true, emailVerified: true }
+    });
+    role = dbUser?.role ?? "STUDENT";
+  }
+  return {
+    id: payload.sub,
+    email: payload.email ?? "",
+    name: payload.name ?? "",
+    role: role ?? "STUDENT",
+    emailVerified: !!payload.email_verified
+  };
+}
+
 // src/middleware/verifyAuth.ts
 var verifyAuth = (...roles) => {
   return async (req, res, next) => {
-    const session = await auth.api.getSession({
-      headers: req.headers
-    });
-    if (!session) {
+    const user = await getAuthUserFromRequest(req);
+    if (!user) {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
-    let role = session.user.role;
-    if (role === void 0) {
-      const dbUser = await prisma.user.findUnique({
-        where: { id: session.user.id },
-        select: { role: true }
-      });
-      role = dbUser?.role ?? "STUDENT";
-    }
     req.user = {
-      id: session.user.id,
-      email: session.user.email,
-      name: session.user.name,
-      role,
-      emailVerified: session.user.emailVerified ?? false
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      emailVerified: user.emailVerified
     };
     if (roles.length > 0 && !roles.includes(req.user.role)) {
       return res.status(403).json({ success: false, message: "Forbidden" });
@@ -916,6 +950,126 @@ router6.get("/users", verifyAuth("ADMIN" /* ADMIN */), adminController.getUsers)
 router6.patch("/users/:id", verifyAuth("ADMIN" /* ADMIN */), adminController.updateUserStatus);
 var adminRouter = router6;
 
+// src/modules/auth/auth.route.ts
+import { Router as Router2 } from "express";
+
+// src/modules/auth/auth.service.ts
+import bcrypt from "bcryptjs";
+var SALT_ROUNDS = 10;
+async function registerUser(data) {
+  const email = data.email.trim().toLowerCase();
+  const role = data.role === "ADMIN" || data.role === "TUTOR" ? data.role : "STUDENT";
+  const existing = await prisma.user.findUnique({ where: { email } });
+  if (existing) {
+    throw new Error("User with this email already exists");
+  }
+  const hashedPassword = await bcrypt.hash(data.password, SALT_ROUNDS);
+  const user = await prisma.user.create({
+    data: {
+      name: data.name.trim(),
+      email,
+      role,
+      image: data.image ?? null,
+      accounts: {
+        create: {
+          id: crypto.randomUUID(),
+          accountId: email,
+          providerId: "credential",
+          password: hashedPassword
+        }
+      }
+    },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+      image: true,
+      emailVerified: true,
+      createdAt: true,
+      updatedAt: true
+    }
+  });
+  return user;
+}
+async function verifyCredentials(email, password) {
+  const normalizedEmail = email.trim().toLowerCase();
+  const user = await prisma.user.findUnique({
+    where: { email: normalizedEmail },
+    include: { accounts: { where: { providerId: "credential" }, take: 1 } }
+  });
+  if (!user) return null;
+  const credentialAccount = user.accounts[0];
+  if (!credentialAccount?.password) return null;
+  const valid = await bcrypt.compare(password, credentialAccount.password);
+  if (!valid) return null;
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    image: user.image,
+    emailVerified: user.emailVerified
+  };
+}
+
+// src/modules/auth/auth.controller.ts
+async function register(req, res) {
+  try {
+    const { name, email, password, role, image } = req.body;
+    if (!name || typeof name !== "string" || !name.trim()) {
+      return res.status(400).json({ success: false, message: "Name is required" });
+    }
+    if (!email || typeof email !== "string" || !email.trim()) {
+      return res.status(400).json({ success: false, message: "Email is required" });
+    }
+    if (!password || typeof password !== "string") {
+      return res.status(400).json({ success: false, message: "Password is required" });
+    }
+    if (password.length < 8) {
+      return res.status(400).json({ success: false, message: "Password must be at least 8 characters" });
+    }
+    const allowedRole = role === "TUTOR" ? "TUTOR" : "STUDENT";
+    const user = await registerUser({
+      name: name.trim(),
+      email: email.trim(),
+      password,
+      role: allowedRole,
+      image: image ?? null
+    });
+    return res.status(201).json({ success: true, user });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Registration failed";
+    if (message.includes("already exists")) {
+      return res.status(409).json({ success: false, message });
+    }
+    console.error("[Auth] register error:", e);
+    return res.status(500).json({ success: false, message: "Registration failed" });
+  }
+}
+async function verifyCredentials2(req, res) {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ success: false, message: "Email and password are required" });
+    }
+    const user = await verifyCredentials(email, password);
+    if (!user) {
+      return res.status(401).json({ success: false, message: "Invalid email or password" });
+    }
+    return res.status(200).json({ success: true, user });
+  } catch (e) {
+    console.error("[Auth] verify-credentials error:", e);
+    return res.status(500).json({ success: false, message: "Authentication failed" });
+  }
+}
+
+// src/modules/auth/auth.route.ts
+var router7 = Router2();
+router7.post("/register", register);
+router7.post("/verify-credentials", verifyCredentials2);
+var authRouter = router7;
+
 // src/app.ts
 var app = express6();
 var ALLOWED_ORIGINS = [
@@ -941,34 +1095,7 @@ function corsHeaders(req, res, next) {
 }
 app.use(corsHeaders);
 app.use(express6.json());
-app.use("/api/auth", (req, _res, next) => {
-  const raw = req.headers;
-  const plain = {};
-  for (const k of Object.keys(raw)) {
-    plain[k] = raw[k];
-  }
-  const headerGet = (name) => {
-    const key = Object.keys(plain).find((k) => k.toLowerCase() === name.toLowerCase());
-    const val = key ? plain[key] : void 0;
-    if (val === void 0) return null;
-    return Array.isArray(val) ? val.join(", ") : val;
-  };
-  const headerKeys = Object.keys(plain);
-  req.headers = new Proxy(plain, {
-    get(target, prop) {
-      if (prop === "get") return headerGet;
-      return target[prop];
-    },
-    ownKeys() {
-      return headerKeys;
-    },
-    getOwnPropertyDescriptor(target, prop) {
-      if (prop === "get") return void 0;
-      return Object.getOwnPropertyDescriptor(target, prop) ?? { enumerable: true, configurable: true, value: target[prop] };
-    }
-  });
-  next();
-});
+app.use("/api/auth", authRouter);
 app.get("/api/auth/debug-db", async (_req, res) => {
   try {
     const { prisma: prisma2 } = await import("./prisma-RF5OZQ2H.mjs");
@@ -981,61 +1108,16 @@ app.get("/api/auth/debug-db", async (_req, res) => {
     res.status(500).json({ ok: false, error: message });
   }
 });
-app.get("/api/auth/debug-credentials", async (req, res) => {
-  try {
-    const { prisma: prisma2 } = await import("./prisma-RF5OZQ2H.mjs");
-    const email = typeof req.query.email === "string" ? req.query.email.trim().toLowerCase() : "";
-    if (!email) {
-      return res.status(400).json({ error: "Missing query param: email" });
-    }
-    const user = await prisma2.user.findUnique({
-      where: { email },
-      select: { id: true, email: true, name: true, accounts: { select: { providerId: true } } }
-    });
-    const hasCredentialAccount = user?.accounts?.some((a) => a.providerId === "credential") ?? false;
-    res.json({
-      userFound: !!user,
-      hasCredentialAccount,
-      accountProviderIds: user?.accounts?.map((a) => a.providerId) ?? []
-    });
-  } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
-    console.error("[debug-credentials]", e);
-    res.status(500).json({ error: "Database error", message });
-  }
-});
-app.use("/api/auth", async (req, res, next) => {
-  const sendError = (err) => {
-    if (res.headersSent) return;
-    const message = err instanceof Error ? err.message : String(err);
-    console.error("[Better Auth] error:", err);
-    res.status(500).json({ success: false, error: "Authentication error", message });
-  };
-  try {
-    const { auth: auth2 } = await import("./auth-SV3TMFTQ.mjs");
-    const authHandler = toNodeHandler(auth2);
-    const wrappedNext = (err) => {
-      if (err) return sendError(err);
-      next();
-    };
-    const result = authHandler(req, res, wrappedNext);
-    if (result && typeof result.catch === "function") {
-      result.catch(sendError);
-    }
-  } catch (err) {
-    sendError(err);
-  }
-});
 app.use("/categories", categoryRouter);
 app.use("/subjects", subjectRouter);
 app.use("/tutors", tutorRouter);
 app.use("/bookings", bookingRouter);
 app.use("/users", usersRouter);
 app.use("/admin", adminRouter);
-app.get("/", (req, res) => {
+app.get("/", (_req, res) => {
   res.send("Hello, this is Skill Bridge server!");
 });
-app.get("/health", (req, res) => {
+app.get("/health", (_req, res) => {
   res.json({ ok: true });
 });
 app.use((err, _req, res, _next) => {
