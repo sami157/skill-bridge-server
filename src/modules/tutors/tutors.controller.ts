@@ -1,6 +1,5 @@
 import type { Request, Response } from "express"
 import { tutorProfileService } from "./tutors.service";
-import { bookingsService } from "../bookings/bookings.service";
 import type { TutorSearchFilters } from "../../lib/utils/interfaces";
 
 const createTutorProfile = async (req: Request, res: Response) => {
@@ -92,16 +91,11 @@ const getMyTutorProfile = async (req: Request, res: Response) => {
     }
 };
 
-/** GET /tutors/me/bookings — fetch all bookings for the logged-in tutor (by TutorProfile.id). */
+/** GET /tutors/me/bookings — all bookings for the logged-in tutor (query by tutor.userId per schema). */
 const getMyBookings = async (req: Request, res: Response) => {
     try {
         const userId = req.user?.id!;
-        const bookings = await bookingsService.getBookings({
-            userId,
-            role: "TUTOR",
-            status: undefined,
-            isAdmin: false,
-        });
+        const bookings = await tutorProfileService.getBookingsForTutorByUserId(userId);
         res.status(200).json({ success: true, data: bookings });
     } catch (error) {
         res.status(400).json({

@@ -171,7 +171,28 @@ const getTutorProfileById = async (id: string) => {
     return tutor;
 };
 
-
+/** All bookings for the tutor whose TutorProfile.userId = userId (schema: Booking.tutor -> TutorProfile.userId). */
+const getBookingsForTutorByUserId = async (userId: string) => {
+    return prisma.booking.findMany({
+        where: { tutor: { userId } },
+        orderBy: { startTime: "asc" },
+        include: {
+            student: { select: { id: true, name: true, email: true, image: true } },
+            tutor: {
+                select: {
+                    id: true,
+                    userId: true,
+                    bio: true,
+                    pricePerHour: true,
+                    rating: true,
+                    reviewCount: true,
+                    user: { select: { id: true, name: true, email: true, image: true } },
+                },
+            },
+            review: true,
+        },
+    });
+};
 
 export const tutorProfileService = {
     createTutorProfile,
@@ -179,4 +200,5 @@ export const tutorProfileService = {
     getAllTutorProfiles,
     getTutorProfileById,
     getTutorProfileByUserId,
+    getBookingsForTutorByUserId,
 };
