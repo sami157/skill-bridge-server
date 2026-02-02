@@ -81,16 +81,40 @@ globalThis["__dirname"] = path.dirname(fileURLToPath(import.meta.url));
 var PrismaClient = getPrismaClientClass();
 
 // src/lib/prisma.ts
-var connectionString = process.env.DATABASE_URL ?? "";
+var connectionString = `${process.env.DATABASE_URL}`;
 var adapter = new PrismaPg({ connectionString });
 var prisma = new PrismaClient({ adapter });
 
 // src/lib/auth.ts
+var BACKEND_BASE_URL = process.env.BETTER_AUTH_URL || (process.env.VERCEL ? "https://skill-bridge-server-eight.vercel.app" : "http://localhost:3000");
+var isProduction = !!process.env.VERCEL || process.env.NODE_ENV === "production";
+async function trustedOrigins(request) {
+  const list = [
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:5173",
+    "https://skill-bridge-one-pi.vercel.app"
+  ];
+  if (request?.headers?.get) {
+    const raw2 = request.headers.get("origin") || request.headers.get("referer") || "";
+    const o = raw2.split("?")[0].replace(/\/$/, "").trim();
+    if (o && !list.includes(o)) list.push(o);
+  }
+  return list;
+}
 var auth = betterAuth({
+  baseURL: BACKEND_BASE_URL,
   database: prismaAdapter(prisma, {
     provider: "postgresql"
   }),
-  trustedOrigins: [process.env.APP_URL],
+  trustedOrigins,
+  advanced: {
+    disableOriginCheck: true,
+    disableCSRFCheck: true,
+    defaultCookieAttributes: isProduction ? { sameSite: "none", secure: true } : void 0,
+    useSecureCookies: isProduction
+  },
   emailAndPassword: {
     enabled: true,
     autoSignIn: false,
@@ -890,6 +914,11 @@ function corsHeaders(req, res, next) {
 }
 app.use(corsHeaders);
 app.use(express5.json());
+app.use("/api/auth", (req, _res, next) => {
+  const origin = req.headers.origin ?? req.headers.referer ?? "(none)";
+  console.log("[Better Auth] request Origin:", origin, "| path:", req.method, req.path);
+  next();
+});
 app.all("/api/auth/{*splat}", toNodeHandler(auth));
 app.use("/categories", categoryRouter);
 app.use("/subjects", subjectRouter);
