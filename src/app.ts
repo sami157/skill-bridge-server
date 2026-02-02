@@ -70,7 +70,21 @@ app.get("/api/auth/debug-credentials", async (req, res) => {
   }
 });
 
-app.use("/api/auth", toNodeHandler(auth));
+// Wrap Better Auth handler so 500s are caught and logged (Vercel logs)
+const authHandler = toNodeHandler(auth);
+app.use("/api/auth", (req: Request, res: Response, next: NextFunction) => {
+  const result = authHandler(req, res, next);
+  if (result && typeof (result as Promise<unknown>).catch === "function") {
+    (result as Promise<unknown>).catch((err: unknown) => {
+      if (res.headersSent) return;
+      console.error("[Better Auth] error:", err);
+      res.status(500).json({
+        error: "Authentication error",
+        message: err instanceof Error ? err.message : "Internal server error",
+      });
+    });
+  }
+});
 
 app.use('/categories', categoryRouter);
 app.use('/subjects', subjectRouter);
