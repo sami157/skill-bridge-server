@@ -385,12 +385,36 @@ var getTutorProfileById = async (id) => {
   }
   return tutor;
 };
+var getBookingsForTutorByUserId = async (userId) => {
+  const tutorProfile = await prisma.tutorProfile.findUnique({ where: { userId } });
+  if (!tutorProfile) return [];
+  return prisma.booking.findMany({
+    where: { tutorId: tutorProfile.id },
+    orderBy: { startTime: "asc" },
+    include: {
+      student: { select: { id: true, name: true, email: true, image: true } },
+      tutor: {
+        select: {
+          id: true,
+          userId: true,
+          bio: true,
+          pricePerHour: true,
+          rating: true,
+          reviewCount: true,
+          user: { select: { id: true, name: true, email: true, image: true } }
+        }
+      },
+      review: true
+    }
+  });
+};
 var tutorProfileService = {
   createTutorProfile,
   updateTutorProfile,
   getAllTutorProfiles,
   getTutorProfileById,
-  getTutorProfileByUserId
+  getTutorProfileByUserId,
+  getBookingsForTutorByUserId
 };
 
 // src/modules/tutors/tutors.controller.ts
@@ -475,6 +499,19 @@ var getMyTutorProfile = async (req, res) => {
     });
   }
 };
+var getMyBookings = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const bookings = await tutorProfileService.getBookingsForTutorByUserId(userId);
+    res.status(200).json({ success: true, data: bookings });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: "Failed to retrieve your sessions",
+      details: error
+    });
+  }
+};
 
 // src/modules/tutors/tutors.route.ts
 var router3 = express3.Router();
@@ -482,6 +519,7 @@ router3.post("/", verifyAuth("TUTOR" /* TUTOR */), createTutorProfile2);
 router3.post("/update", verifyAuth("TUTOR" /* TUTOR */), updateTutorProfile2);
 router3.get("/", getAllTutorProfiles2);
 router3.get("/me", verifyAuth("TUTOR" /* TUTOR */), getMyTutorProfile);
+router3.get("/me/bookings", verifyAuth("TUTOR" /* TUTOR */), getMyBookings);
 router3.get("/:id", getTutorProfileById2);
 var tutorRouter = router3;
 
@@ -491,13 +529,24 @@ import { Router } from "express";
 // src/modules/bookings/bookings.service.ts
 import "http";
 var createBooking = async (payload) => {
-  const { studentId, tutorId, startTime, endTime } = payload;
+  const { studentId, tutorUserId, startTime, endTime } = payload;
   if (startTime >= endTime) {
     throw new Error("Invalid booking time range");
   }
+  const byProfileId = await prisma.tutorProfile.findUnique({ where: { id: tutorUserId } });
+  if (byProfileId) {
+    throw new Error(
+      "Use the tutor's user id (userId), not tutor profile id (tutorId). The booking API expects the tutor's User.id."
+    );
+  }
+  const tutorProfile = await prisma.tutorProfile.findUnique({ where: { userId: tutorUserId } });
+  if (!tutorProfile) {
+    throw new Error("Tutor not found");
+  }
+  const tutorProfileId = tutorProfile.id;
   const overlappingBooking = await prisma.booking.findFirst({
     where: {
-      tutorId,
+      tutorId: tutorProfileId,
       status: BookingStatus.CONFIRMED,
       AND: [
         {
@@ -519,7 +568,7 @@ var createBooking = async (payload) => {
   const booking = await prisma.booking.create({
     data: {
       studentId,
-      tutorId,
+      tutorId: tutorProfileId,
       startTime,
       endTime,
       status: BookingStatus.CONFIRMED
@@ -546,14 +595,18 @@ var cancelBooking = async (bookingId, studentId) => {
   });
   return cancelledBooking;
 };
-var completeBooking = async (bookingId, tutorId) => {
+var completeBooking = async (bookingId, tutorUserId) => {
+  const tutorProfile = await prisma.tutorProfile.findUnique({ where: { userId: tutorUserId } });
+  if (!tutorProfile) {
+    throw new Error("Tutor profile not found");
+  }
   const booking = await prisma.booking.findUnique({
     where: { id: bookingId }
   });
   if (!booking) {
     throw new Error("Booking not found");
   }
-  if (booking.tutorId !== tutorId) {
+  if (booking.tutorId !== tutorProfile.id) {
     throw new Error("You are not allowed to complete this booking");
   }
   if (booking.status !== BookingStatus.CONFIRMED) {
@@ -566,7 +619,21 @@ var completeBooking = async (bookingId, tutorId) => {
   return completedBooking;
 };
 var getBookings = async ({ userId, role, status, isAdmin }) => {
-  const whereClause = isAdmin ? { ...status && { status } } : role === "STUDENT" ? { studentId: userId, ...status && { status } } : { tutorId: userId, ...status && { status } };
+  let whereClause = {};
+  if (isAdmin) {
+    whereClause = { ...status && { status } };
+  } else if (role === "STUDENT") {
+    whereClause = { studentId: userId, ...status && { status } };
+  } else if (role === "TUTOR") {
+    const tutorProfile = await prisma.tutorProfile.findUnique({ where: { userId } });
+    if (!tutorProfile) {
+      return [];
+    }
+    whereClause = {
+      tutorId: tutorProfile.id,
+      ...status && { status }
+    };
+  }
   const bookings = await prisma.booking.findMany({
     where: whereClause,
     orderBy: { startTime: "asc" },
@@ -614,8 +681,11 @@ var getBookingById = async (bookingId, userId, role, isAdmin) => {
     if (role === Role.STUDENT && booking.studentId !== userId) {
       throw new Error("You are not allowed to view this booking");
     }
-    if (role === Role.TUTOR && booking.tutorId !== userId) {
-      throw new Error("You are not allowed to view this booking");
+    if (role === Role.TUTOR) {
+      const tutorProfile = await prisma.tutorProfile.findUnique({ where: { userId } });
+      if (!tutorProfile || booking.tutorId !== tutorProfile.id) {
+        throw new Error("You are not allowed to view this booking");
+      }
     }
   }
   return booking;
@@ -670,8 +740,8 @@ var bookingsService = {
 var createBooking2 = async (req, res, next) => {
   try {
     const studentId = req.user?.id;
-    const { tutorId, startTime, endTime } = req.body;
-    const booking = await bookingsService.createBooking({ studentId, tutorId, startTime, endTime });
+    const { tutorUserId, startTime, endTime } = req.body;
+    const booking = await bookingsService.createBooking({ studentId, tutorUserId, startTime, endTime });
     res.status(201).json({ success: true, data: booking });
   } catch (error) {
     res.status(400).json({ success: false, message: "Failed to create booking", details: error });
@@ -709,6 +779,20 @@ var getBookings2 = async (req, res, next) => {
     res.status(400).json({ success: false, message: "Failed to retrieve bookings", details: error });
   }
 };
+var getBookingsForTutor = async (req, res, next) => {
+  try {
+    const userId = req.user?.id;
+    const bookings = await bookingsService.getBookings({
+      userId,
+      role: "TUTOR",
+      status: void 0,
+      isAdmin: false
+    });
+    res.status(200).json({ success: true, data: bookings });
+  } catch (error) {
+    res.status(400).json({ success: false, message: "Failed to retrieve your sessions", details: error });
+  }
+};
 var getBookingById2 = async (req, res, next) => {
   try {
     const { bookingId } = req.params;
@@ -737,6 +821,7 @@ var bookingsController = {
   cancelBooking: cancelBooking2,
   completeBooking: completeBooking2,
   getBookings: getBookings2,
+  getBookingsForTutor,
   getBookingById: getBookingById2,
   createReview: createReview2
 };
@@ -763,6 +848,7 @@ router4.get(
   verifyAuth("STUDENT" /* STUDENT */, "TUTOR" /* TUTOR */, "ADMIN" /* ADMIN */),
   bookingsController.getBookings
 );
+router4.get("/tutor", verifyAuth("TUTOR" /* TUTOR */), bookingsController.getBookingsForTutor);
 router4.get(
   "/:bookingId",
   verifyAuth("STUDENT" /* STUDENT */, "TUTOR" /* TUTOR */),
@@ -956,7 +1042,7 @@ import { Router as Router2 } from "express";
 // src/modules/auth/auth.service.ts
 import bcrypt from "bcryptjs";
 import { SignJWT } from "jose";
-var LOGIN_TOKEN_TTL_SEC = 60;
+var LOGIN_TOKEN_TTL_SEC = 7 * 24 * 60 * 60;
 var SALT_ROUNDS = 10;
 async function registerUser(data) {
   const email = data.email.trim().toLowerCase();
