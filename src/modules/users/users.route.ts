@@ -4,8 +4,8 @@ import { UserRole, verifyAuth } from "../../middleware/verifyAuth";
 
 const router = express.Router();
 
-// Only authenticated students can access these routes
-router.get("/profile", verifyAuth(UserRole.STUDENT, UserRole.ADMIN), usersController.getStudentProfile);
-router.put("/profile", verifyAuth(UserRole.STUDENT, UserRole.ADMIN), usersController.updateStudentProfile);
+// Any authenticated user (student, tutor, admin) can access their own profile
+router.get("/profile", verifyAuth(UserRole.STUDENT, UserRole.TUTOR, UserRole.ADMIN), usersController.getStudentProfile);
+router.put("/profile", verifyAuth(UserRole.STUDENT, UserRole.TUTOR, UserRole.ADMIN), usersController.updateStudentProfile);
 
 export const usersRouter = router;
