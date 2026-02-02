@@ -943,12 +943,30 @@ app.use(corsHeaders);
 app.use(express6.json());
 app.use("/api/auth", (req, _res, next) => {
   const raw = req.headers;
-  raw.get = function get2(name) {
-    const key = Object.keys(raw).find((k) => k !== "get" && k.toLowerCase() === name.toLowerCase());
-    const val = key ? raw[key] : void 0;
+  const plain = {};
+  for (const k of Object.keys(raw)) {
+    plain[k] = raw[k];
+  }
+  const headerGet = (name) => {
+    const key = Object.keys(plain).find((k) => k.toLowerCase() === name.toLowerCase());
+    const val = key ? plain[key] : void 0;
     if (val === void 0) return null;
     return Array.isArray(val) ? val.join(", ") : val;
   };
+  const headerKeys = Object.keys(plain);
+  req.headers = new Proxy(plain, {
+    get(target, prop) {
+      if (prop === "get") return headerGet;
+      return target[prop];
+    },
+    ownKeys() {
+      return headerKeys;
+    },
+    getOwnPropertyDescriptor(target, prop) {
+      if (prop === "get") return void 0;
+      return Object.getOwnPropertyDescriptor(target, prop) ?? { enumerable: true, configurable: true, value: target[prop] };
+    }
+  });
   next();
 });
 app.get("/api/auth/debug-db", async (_req, res) => {

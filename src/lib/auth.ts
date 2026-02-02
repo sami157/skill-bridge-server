@@ -1,127 +1,89 @@
-import { betterAuth } from "better-auth";
-import { createAuthMiddleware } from "better-auth/api";
-import { prismaAdapter } from "better-auth/adapters/prisma";
+/**
+ * Auth helpers for NextAuth compatibility.
+ * - JWT verification using NEXTAUTH_SECRET (backend validates NextAuth JWTs)
+ * - No Better Auth; auth runs on the Next.js app via NextAuth.
+ */
+
+import { jwtVerify, type JWTPayload } from "jose";
 import { prisma } from "./prisma";
 
-// Must include /api/auth so Better Auth strips it and matches routes like /sign-in/email
-const BACKEND_BASE_URL =
-  process.env.BETTER_AUTH_URL ||
-  (process.env.VERCEL ? "https://skill-bridge-server-eight.vercel.app/api/auth" : "http://localhost:3000/api/auth");
+const JWT_SECRET = process.env.NEXTAUTH_SECRET;
+if (!JWT_SECRET && process.env.NODE_ENV !== "test") {
+  console.warn("[Auth] NEXTAUTH_SECRET is not set; JWT verification will fail.");
+}
 
-const isProduction = !!process.env.VERCEL || process.env.NODE_ENV === "production";
+const secret = JWT_SECRET ? new TextEncoder().encode(JWT_SECRET) : new Uint8Array(0);
 
-// Always allow the request origin (no 403 Invalid origin). Called per-request; we add current origin to the list.
-async function trustedOrigins(request?: { headers?: { get?: (n: string) => string | null } }): Promise<string[]> {
-  const list = [
-    "http://localhost:3000",
-    "http://localhost:5173",
-    "http://127.0.0.1:3000",
-    "http://127.0.0.1:5173",
-    "https://skill-bridge-one-pi.vercel.app",
-  ];
-  const headers = request?.headers;
-  const get = headers?.get;
-  if (typeof get === "function") {
-    const raw = (get("origin") ?? get("referer") ?? "") as string;
-    const o = (raw.split("?")[0] ?? raw).replace(/\/$/, "").trim();
-    if (o && !list.includes(o)) list.push(o);
+export interface AuthUser {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  emailVerified: boolean;
+}
+
+export interface NextAuthJwtPayload extends JWTPayload {
+  sub?: string;
+  email?: string;
+  name?: string;
+  role?: string;
+}
+
+/**
+ * Get JWT from cookie (next-auth.session-token) or Authorization: Bearer <token>
+ */
+function getTokenFromRequest(req: { headers: { cookie?: string; authorization?: string } }): string | null {
+  const authHeader = req.headers.authorization;
+  if (authHeader?.startsWith("Bearer ")) {
+    return authHeader.slice(7);
   }
-  return list;
+  const cookie = req.headers.cookie;
+  if (!cookie) return null;
+  const match =
+    cookie.match(/(?:^|;\s*)next-auth\.session-token=([^;]*)/) ??
+    cookie.match(/(?:^|;\s*)__Secure-next-auth\.session-token=([^;]*)/);
+  return match ? decodeURIComponent(match[1].trim()) : null;
 }
 
-/** Mask email for logs: "user@example.com" -> "u***@ex***.com" */
-function maskEmail(email: string | undefined): string {
-  if (!email || typeof email !== "string") return "(no email)";
-  const at = email.indexOf("@");
-  if (at <= 0) return "***";
-  const local = email.slice(0, at);
-  const domain = email.slice(at + 1);
-  const l = local.length >= 2 ? local.slice(0, 1) + "***" : "***";
-  const d = domain.length >= 4 ? domain.slice(0, 2) + "***" + domain.slice(-2) : "***";
-  return `${l}@${d}`;
-}
-
-/** Remove password/token/secret fields from an object for safe logging */
-function sanitizeForLog(obj: unknown): unknown {
-  if (obj === null || obj === undefined) return obj;
-  if (typeof obj !== "object") return obj;
-  const out: Record<string, unknown> = {};
-  const skip = new Set(["password", "token", "secret", "accessToken", "refreshToken", "idToken"]);
-  for (const [k, v] of Object.entries(obj)) {
-    if (skip.has(k)) {
-      out[k] = "(redacted)";
-      continue;
-    }
-    if (v !== null && typeof v === "object" && !Array.isArray(v) && !(v instanceof Date)) {
-      out[k] = sanitizeForLog(v);
-    } else {
-      out[k] = v;
-    }
+/**
+ * Verify NextAuth JWT and return payload. Returns null if invalid/missing.
+ */
+export async function verifyNextAuthJwt(token: string): Promise<NextAuthJwtPayload | null> {
+  if (!secret.length) return null;
+  try {
+    const { payload } = await jwtVerify(token, secret);
+    return payload as NextAuthJwtPayload;
+  } catch {
+    return null;
   }
-  return out;
 }
 
-export const auth = betterAuth({
-  baseURL: BACKEND_BASE_URL,
-  database: prismaAdapter(prisma, {
-    provider: "postgresql",
-  }),
-  trustedOrigins,
-  user: {
-    additionalFields: {
-      role: { type: "string", input: true },
-    },
-  },
-  advanced: {
-    disableOriginCheck: true,
-    disableCSRFCheck: true,
-    defaultCookieAttributes: isProduction
-      ? { sameSite: "none", secure: true }
-      : undefined,
-    useSecureCookies: isProduction,
-  },
-  emailAndPassword: {
-    enabled: true,
-    autoSignIn: false,
-    requireEmailVerification: false,
-  },
-  databaseHooks: {
-    user: {
-      create: {
-        before: async (user) => {
-          const role = (user as { role?: string }).role;
-          const allowed = role === "STUDENT" || role === "TUTOR";
-          if (!allowed) {
-            (user as { role: string }).role = "STUDENT";
-          }
-          return user;
-        },
-        after: async (user, _context) => {
-          const emailMasked = maskEmail(user?.email as string | undefined);
-          console.log("[Better Auth] signup: user created in DB", { id: user?.id, email: emailMasked });
-          try {
-            const found = user?.id
-              ? await prisma.user.findUnique({ where: { id: user.id }, select: { id: true, email: true, name: true, role: true } })
-              : null;
-            console.log("[Better Auth] signup: DB verification", found ? "user found" : "user NOT found", found ? { id: found.id, email: maskEmail(found.email), role: (found as { role?: string }).role } : {});
-          } catch (e) {
-            console.error("[Better Auth] signup: DB verification error", e);
-          }
-        },
-      },
-    },
-  },
-  hooks: {
-    after: createAuthMiddleware(async (ctx) => {
-      const path = (ctx as { path?: string }).path ?? "";
-      if (path !== "/sign-up/email" && path !== "/sign-in/email") return;
-      const body = (ctx as { body?: Record<string, unknown> }).body ?? {};
-      const emailMasked = maskEmail(body?.email as string | undefined);
-      console.log("[Better Auth] request", path, "email:", emailMasked);
-      const returned = (ctx as { returned?: unknown }).returned;
-      if (returned !== undefined) {
-        console.log("[Better Auth] response (sanitized)", path, JSON.stringify(sanitizeForLog(returned)));
-      }
-    }),
-  },
-});
+/**
+ * Resolve current user from request: verify JWT, then optionally load role from DB if missing in token.
+ */
+export async function getAuthUserFromRequest(req: {
+  headers: { cookie?: string; authorization?: string };
+}): Promise<AuthUser | null> {
+  const token = getTokenFromRequest(req);
+  if (!token) return null;
+
+  const payload = await verifyNextAuthJwt(token);
+  if (!payload?.sub) return null;
+
+  let role = payload.role as string | undefined;
+  if (role === undefined) {
+    const dbUser = await prisma.user.findUnique({
+      where: { id: payload.sub },
+      select: { role: true, emailVerified: true },
+    });
+    role = dbUser?.role ?? "STUDENT";
+  }
+
+  return {
+    id: payload.sub,
+    email: (payload.email as string) ?? "",
+    name: (payload.name as string) ?? "",
+    role: role ?? "STUDENT",
+    emailVerified: !!payload.email_verified,
+  };
+}

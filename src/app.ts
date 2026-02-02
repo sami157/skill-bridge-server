@@ -1,5 +1,3 @@
-import type { IncomingHttpHeaders } from "node:http";
-import { toNodeHandler } from "better-auth/node";
 import express, { type Application, type Request, type Response, type NextFunction } from "express";
 import { categoryRouter } from "./modules/categories/category.route";
 import { subjectRouter } from "./modules/subjects/subjects.route";
@@ -7,10 +5,10 @@ import { tutorRouter } from "./modules/tutors/tutors.route";
 import { bookingRouter } from "./modules/bookings/bookings.route";
 import { usersRouter } from "./modules/users/users.route";
 import { adminRouter } from "./modules/admin/admin.route";
+import { authRouter } from "./modules/auth/auth.route";
 
 const app: Application = express();
 
-// CORS: allow frontend origin and credentials so cookies work; never block with 403 for origin
 const ALLOWED_ORIGINS = [
   "http://localhost:3000",
   "http://localhost:5173",
@@ -36,35 +34,11 @@ function corsHeaders(req: Request, res: Response, next: NextFunction) {
   next();
 }
 app.use(corsHeaders);
-
 app.use(express.json());
 
-// Fix "Illegal invocation" and "invalid header value": Better Auth expects headers.get(name).
-// Mutating req.headers to add .get caused that function to be enumerated and passed to Headers.append.
-// Use a Proxy: target has only real header keys (so enumeration is safe), and .get is provided via the trap (non-enumerable).
-app.use("/api/auth", (req: Request, _res, next) => {
-  const raw = req.headers as IncomingHttpHeaders;
-  const plain: Record<string, string | string[] | undefined> = {};
-  for (const k of Object.keys(raw)) {
-    plain[k] = raw[k];
-  }
-  const headerGet = (name: string): string | null => {
-    const key = Object.keys(plain).find((k) => k.toLowerCase() === name.toLowerCase());
-    const val = key ? plain[key] : undefined;
-    if (val === undefined) return null;
-    return Array.isArray(val) ? val.join(", ") : val;
-  };
-  (req as Request & { headers: typeof plain & { get: typeof headerGet } }).headers = new Proxy(plain, {
-    get(target, prop: string) {
-      if (prop === "get") return headerGet;
-      const v = target[prop];
-      return v;
-    },
-  }) as typeof req.headers;
-  next();
-});
+// NextAuth-compatible auth: register + verify-credentials (used by Next.js app)
+app.use("/api/auth", authRouter);
 
-// Debug: test DB connection and return actual error (so we can see what's wrong)
 app.get("/api/auth/debug-db", async (_req, res) => {
   try {
     const { prisma } = await import("./lib/prisma");
@@ -78,71 +52,21 @@ app.get("/api/auth/debug-db", async (_req, res) => {
   }
 });
 
-// Debug: check if a user exists and has credential account (no secrets). Must be before auth catch-all.
-app.get("/api/auth/debug-credentials", async (req, res) => {
-  try {
-    const { prisma } = await import("./lib/prisma");
-    const email = typeof req.query.email === "string" ? req.query.email.trim().toLowerCase() : "";
-    if (!email) {
-      return res.status(400).json({ error: "Missing query param: email" });
-    }
-    const user = await prisma.user.findUnique({
-      where: { email },
-      select: { id: true, email: true, name: true, accounts: { select: { providerId: true } } },
-    });
-    const hasCredentialAccount = user?.accounts?.some((a) => a.providerId === "credential") ?? false;
-    res.json({
-      userFound: !!user,
-      hasCredentialAccount,
-      accountProviderIds: user?.accounts?.map((a) => a.providerId) ?? [],
-    });
-  } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
-    console.error("[debug-credentials]", e);
-    res.status(500).json({ error: "Database error", message });
-  }
+app.use("/categories", categoryRouter);
+app.use("/subjects", subjectRouter);
+app.use("/tutors", tutorRouter);
+app.use("/bookings", bookingRouter);
+app.use("/users", usersRouter);
+app.use("/admin", adminRouter);
+
+app.get("/", (_req, res) => {
+  res.send("Hello, this is Skill Bridge server!");
 });
 
-// Load auth on first request so load-time errors (e.g. DATABASE_URL) are caught and returned
-app.use("/api/auth", async (req: Request, res: Response, next: NextFunction) => {
-  const sendError = (err: unknown) => {
-    if (res.headersSent) return;
-    const message = err instanceof Error ? err.message : String(err);
-    console.error("[Better Auth] error:", err);
-    res.status(500).json({ success: false, error: "Authentication error", message });
-  };
-  try {
-    const { auth } = await import("./lib/auth");
-    const authHandler = toNodeHandler(auth);
-    const wrappedNext: NextFunction = (err?: unknown) => {
-      if (err) return sendError(err);
-      next();
-    };
-    const result = authHandler(req, res, wrappedNext);
-    if (result && typeof (result as Promise<unknown>).catch === "function") {
-      (result as Promise<unknown>).catch(sendError);
-    }
-  } catch (err) {
-    sendError(err);
-  }
+app.get("/health", (_req, res) => {
+  res.json({ ok: true });
 });
 
-app.use('/categories', categoryRouter);
-app.use('/subjects', subjectRouter);
-app.use('/tutors', tutorRouter);
-app.use('/bookings', bookingRouter);
-app.use('/users', usersRouter);
-app.use('/admin', adminRouter);
-
-app.get("/", (req, res) => {
-    res.send("Hello, this is Skill Bridge server!");
-});
-
-app.get("/health", (req, res) => {
-    res.json({ ok: true });
-});
-
-// Global error handler: return actual error message so we can debug 500s
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   if (res.headersSent) return;
   const message = err instanceof Error ? err.message : String(err);
