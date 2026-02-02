@@ -32,7 +32,33 @@ app.use("/api/auth", (req, _res, next) => {
   console.log("[Better Auth] request Origin:", origin, "| path:", req.method, req.path);
   next();
 });
-app.all('/api/auth/{*splat}', toNodeHandler(auth));
+
+// Debug: check if a user exists and has credential account (no secrets). Must be before auth catch-all.
+app.get("/api/auth/debug-credentials", async (req, res) => {
+  const { prisma } = await import("./lib/prisma");
+  const email = typeof req.query.email === "string" ? req.query.email.trim().toLowerCase() : "";
+  if (!email) {
+    return res.status(400).json({ error: "Missing query param: email" });
+  }
+  try {
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: { id: true, email: true, name: true, accounts: { select: { providerId: true } } },
+    });
+    const hasCredentialAccount = user?.accounts?.some((a) => a.providerId === "credential") ?? false;
+    res.json({
+      userFound: !!user,
+      hasCredentialAccount,
+      accountProviderIds: user?.accounts?.map((a) => a.providerId) ?? [],
+    });
+  } catch (e) {
+    console.error("[debug-credentials]", e);
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
+app.use("/api/auth", toNodeHandler(auth));
+
 app.use('/categories', categoryRouter)
 app.use('/subjects', subjectRouter)
 app.use('/tutors', tutorRouter)

@@ -3,9 +3,10 @@ import { createAuthMiddleware } from "better-auth/api";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { prisma } from "./prisma";
 
+// Must include /api/auth so Better Auth strips it and matches routes like /sign-in/email
 const BACKEND_BASE_URL =
   process.env.BETTER_AUTH_URL ||
-  (process.env.VERCEL ? "https://skill-bridge-server-eight.vercel.app" : "http://localhost:3000");
+  (process.env.VERCEL ? "https://skill-bridge-server-eight.vercel.app/api/auth" : "http://localhost:3000/api/auth");
 
 const isProduction = !!process.env.VERCEL || process.env.NODE_ENV === "production";
 
