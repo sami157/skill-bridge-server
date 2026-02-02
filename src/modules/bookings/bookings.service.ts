@@ -112,7 +112,8 @@ const completeBooking = async (bookingId: string, tutorUserId: string) => {
 };
 
 const getBookings = async ({ userId, role, status, isAdmin }: GetBookingsParams) => {
-    let whereClause: { studentId?: string; tutorId?: string; status?: any } = {};
+    type Where = { studentId?: string; tutorId?: string; status?: any; OR?: Array<{ tutorId?: string; tutor?: { userId: string } }> };
+    let whereClause: Where = {};
 
     if (isAdmin) {
         whereClause = { ...(status && { status }) };
@@ -123,8 +124,14 @@ const getBookings = async ({ userId, role, status, isAdmin }: GetBookingsParams)
         if (!tutorProfile) {
             return [];
         }
-        // Schema: Booking.tutorId references TutorProfile.id
-        whereClause = { tutorId: tutorProfile.id, ...(status && { status }) };
+        // Schema: Booking.tutorId = TutorProfile.id. Also match by tutor.userId for any wrong data.
+        whereClause = {
+            OR: [
+                { tutorId: tutorProfile.id },
+                { tutor: { userId } },
+            ],
+            ...(status && { status }),
+        };
     }
 
     const bookings = await prisma.booking.findMany({
