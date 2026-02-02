@@ -4,15 +4,25 @@ import { prisma } from "../../lib/prisma";
 import type { CreateBookingPayload, CreateReviewInput, GetBookingsParams } from "../../lib/utils/interfaces";
 
 const createBooking = async (payload: CreateBookingPayload) => {
-    const { studentId, tutorId, startTime, endTime } = payload;
-    
+    const { studentId, tutorId: tutorIdFromPayload, startTime, endTime } = payload;
+
     if (startTime >= endTime) {
         throw new Error("Invalid booking time range");
     }
 
+    // Booking.tutorId must be TutorProfile.id. Resolve: client may send userId or TutorProfile.id.
+    let tutorProfile = await prisma.tutorProfile.findUnique({ where: { userId: tutorIdFromPayload } });
+    if (!tutorProfile) {
+        tutorProfile = await prisma.tutorProfile.findUnique({ where: { id: tutorIdFromPayload } });
+    }
+    if (!tutorProfile) {
+        throw new Error("Tutor not found");
+    }
+    const tutorProfileId = tutorProfile.id;
+
     const overlappingBooking = await prisma.booking.findFirst({
         where: {
-            tutorId,
+            tutorId: tutorProfileId,
             status: BookingStatus.CONFIRMED,
             AND: [
                 {
@@ -36,7 +46,7 @@ const createBooking = async (payload: CreateBookingPayload) => {
     const booking = await prisma.booking.create({
         data: {
             studentId,
-            tutorId,
+            tutorId: tutorProfileId,
             startTime,
             endTime,
             status: BookingStatus.CONFIRMED,
@@ -71,7 +81,12 @@ const cancelBooking = async (bookingId: string, studentId: string) => {
     return cancelledBooking;
 };
 
-const completeBooking = async (bookingId: string, tutorId: string) => {
+const completeBooking = async (bookingId: string, tutorUserId: string) => {
+    const tutorProfile = await prisma.tutorProfile.findUnique({ where: { userId: tutorUserId } });
+    if (!tutorProfile) {
+        throw new Error("Tutor profile not found");
+    }
+
     const booking = await prisma.booking.findUnique({
         where: { id: bookingId },
     });
@@ -80,7 +95,7 @@ const completeBooking = async (bookingId: string, tutorId: string) => {
         throw new Error("Booking not found");
     }
 
-    if (booking.tutorId !== tutorId) {
+    if (booking.tutorId !== tutorProfile.id) {
         throw new Error("You are not allowed to complete this booking");
     }
 
@@ -97,11 +112,20 @@ const completeBooking = async (bookingId: string, tutorId: string) => {
 };
 
 const getBookings = async ({ userId, role, status, isAdmin }: GetBookingsParams) => {
-    const whereClause = isAdmin
-        ? { ...(status && { status }) }
-        : role === "STUDENT"
-            ? { studentId: userId, ...(status && { status }) }
-            : { tutorId: userId, ...(status && { status }) };
+    let whereClause: { studentId?: string; tutorId?: string; status?: any } = {};
+
+    if (isAdmin) {
+        whereClause = { ...(status && { status }) };
+    } else if (role === "STUDENT") {
+        whereClause = { studentId: userId, ...(status && { status }) };
+    } else if (role === "TUTOR") {
+        const tutorProfile = await prisma.tutorProfile.findUnique({ where: { userId } });
+        if (!tutorProfile) {
+            return [];
+        }
+        // Schema: Booking.tutorId references TutorProfile.id
+        whereClause = { tutorId: tutorProfile.id, ...(status && { status }) };
+    }
 
     const bookings = await prisma.booking.findMany({
         where: whereClause,
@@ -154,8 +178,11 @@ const getBookingById = async (bookingId: string, userId: string, role: Role, isA
         if (role === Role.STUDENT && booking.studentId !== userId) {
             throw new Error("You are not allowed to view this booking");
         }
-        if (role === Role.TUTOR && booking.tutorId !== userId) {
-            throw new Error("You are not allowed to view this booking");
+        if (role === Role.TUTOR) {
+            const tutorProfile = await prisma.tutorProfile.findUnique({ where: { userId } });
+            if (!tutorProfile || booking.tutorId !== tutorProfile.id) {
+                throw new Error("You are not allowed to view this booking");
+            }
         }
     }
 
