@@ -1,6 +1,9 @@
 import bcrypt from "bcryptjs";
+import { SignJWT } from "jose";
 import { prisma } from "../../lib/prisma";
 import type { Role } from "../../../generated/prisma/enums";
+
+const LOGIN_TOKEN_TTL_SEC = 60;
 
 const SALT_ROUNDS = 10;
 
@@ -73,6 +76,29 @@ export async function verifyCredentials(email: string, password: string) {
     image: user.image,
     emailVerified: user.emailVerified,
   };
+}
+
+/** Create a short-lived JWT for the frontend to pass to NextAuth (same secret as frontend). */
+export async function createLoginToken(user: {
+  id: string;
+  name: string | null;
+  email: string;
+  role: string;
+  image: string | null;
+}): Promise<string> {
+  const secret = process.env.NEXTAUTH_SECRET;
+  if (!secret) throw new Error("NEXTAUTH_SECRET is required for login tokens");
+  return new SignJWT({
+    sub: user.id,
+    email: user.email,
+    name: user.name,
+    role: user.role,
+    image: user.image,
+  })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime(`${LOGIN_TOKEN_TTL_SEC}s`)
+    .sign(new TextEncoder().encode(secret));
 }
 
 /**

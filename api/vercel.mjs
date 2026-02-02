@@ -955,6 +955,8 @@ import { Router as Router2 } from "express";
 
 // src/modules/auth/auth.service.ts
 import bcrypt from "bcryptjs";
+import { SignJWT } from "jose";
+var LOGIN_TOKEN_TTL_SEC = 60;
 var SALT_ROUNDS = 10;
 async function registerUser(data) {
   const email = data.email.trim().toLowerCase();
@@ -1012,6 +1014,17 @@ async function verifyCredentials(email, password) {
     emailVerified: user.emailVerified
   };
 }
+async function createLoginToken(user) {
+  const secret2 = process.env.NEXTAUTH_SECRET;
+  if (!secret2) throw new Error("NEXTAUTH_SECRET is required for login tokens");
+  return new SignJWT({
+    sub: user.id,
+    email: user.email,
+    name: user.name,
+    role: user.role,
+    image: user.image
+  }).setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime(`${LOGIN_TOKEN_TTL_SEC}s`).sign(new TextEncoder().encode(secret2));
+}
 
 // src/modules/auth/auth.controller.ts
 async function register(req, res) {
@@ -1057,7 +1070,8 @@ async function verifyCredentials2(req, res) {
     if (!user) {
       return res.status(401).json({ success: false, message: "Invalid email or password" });
     }
-    return res.status(200).json({ success: true, user });
+    const token = await createLoginToken(user);
+    return res.status(200).json({ success: true, user, token });
   } catch (e) {
     console.error("[Auth] verify-credentials error:", e);
     return res.status(500).json({ success: false, message: "Authentication failed" });

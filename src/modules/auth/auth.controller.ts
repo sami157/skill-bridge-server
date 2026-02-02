@@ -57,7 +57,8 @@ export async function verifyCredentials(req: Request, res: Response) {
       return res.status(401).json({ success: false, message: "Invalid email or password" });
     }
 
-    return res.status(200).json({ success: true, user });
+    const token = await authService.createLoginToken(user);
+    return res.status(200).json({ success: true, user, token });
   } catch (e) {
     console.error("[Auth] verify-credentials error:", e);
     return res.status(500).json({ success: false, message: "Authentication failed" });
