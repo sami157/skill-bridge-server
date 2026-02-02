@@ -24,9 +24,10 @@ interface TutorSearchFilters {
     sortBy?: "rating_asc" | "rating_desc" | "price_asc" | "price_desc";
 }
 
+/** Booking creation: tutorUserId must be the tutor's User.id (not TutorProfile.id). */
 interface CreateBookingPayload {
     studentId: string;
-    tutorId: string;
+    tutorUserId: string;
     startTime: Date;
     endTime: Date;
 }

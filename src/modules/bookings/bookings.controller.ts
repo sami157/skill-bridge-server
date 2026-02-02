@@ -6,8 +6,8 @@ import { Role } from "../../../generated/prisma/enums";
 const createBooking = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const studentId = req.user?.id!;
-        const { tutorId, startTime, endTime } = req.body;
-        const booking = await bookingsService.createBooking({ studentId, tutorId, startTime, endTime });
+        const { tutorUserId, startTime, endTime } = req.body;
+        const booking = await bookingsService.createBooking({ studentId, tutorUserId, startTime, endTime });
         res.status(201).json({ success: true, data: booking });
     } catch (error: any) {
         res.status(400).json({ success: false, message: "Failed to create booking", details: error });
@@ -52,6 +52,21 @@ const getBookings = async (req: Request, res: Response, next: NextFunction) => {
     }
 };
 
+/** GET /bookings/tutor — all bookings for the logged-in tutor (forced TUTOR branch). */
+const getBookingsForTutor = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const userId = req.user?.id!;
+        const bookings = await bookingsService.getBookings({
+            userId,
+            role: "TUTOR",
+            status: undefined,
+            isAdmin: false,
+        });
+        res.status(200).json({ success: true, data: bookings });
+    } catch (error: any) {
+        res.status(400).json({ success: false, message: "Failed to retrieve your sessions", details: error });
+    }
+};
 
 const getBookingById = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -84,6 +99,7 @@ export const bookingsController = {
     cancelBooking,
     completeBooking,
     getBookings,
+    getBookingsForTutor,
     getBookingById,
     createReview,
 };

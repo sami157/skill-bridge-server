@@ -4,17 +4,22 @@ import { prisma } from "../../lib/prisma";
 import type { CreateBookingPayload, CreateReviewInput, GetBookingsParams } from "../../lib/utils/interfaces";
 
 const createBooking = async (payload: CreateBookingPayload) => {
-    const { studentId, tutorId: tutorIdFromPayload, startTime, endTime } = payload;
+    const { studentId, tutorUserId, startTime, endTime } = payload;
 
     if (startTime >= endTime) {
         throw new Error("Invalid booking time range");
     }
 
-    // Schema: Booking.tutorId references TutorProfile.id. Resolve profile and store tutorProfile.id only.
-    let tutorProfile = await prisma.tutorProfile.findUnique({ where: { id: tutorIdFromPayload } });
-    if (!tutorProfile) {
-        tutorProfile = await prisma.tutorProfile.findUnique({ where: { userId: tutorIdFromPayload } });
+    // Guard: payload must be tutor's User.id. If it matches a TutorProfile.id, reject with clear error.
+    const byProfileId = await prisma.tutorProfile.findUnique({ where: { id: tutorUserId } });
+    if (byProfileId) {
+        throw new Error(
+            "Use the tutor's user id (userId), not tutor profile id (tutorId). The booking API expects the tutor's User.id."
+        );
     }
+
+    // Schema: Booking.tutorId references TutorProfile.id. Resolve profile by userId and store tutorProfile.id only.
+    const tutorProfile = await prisma.tutorProfile.findUnique({ where: { userId: tutorUserId } });
     if (!tutorProfile) {
         throw new Error("Tutor not found");
     }
@@ -112,7 +117,7 @@ const completeBooking = async (bookingId: string, tutorUserId: string) => {
 };
 
 const getBookings = async ({ userId, role, status, isAdmin }: GetBookingsParams) => {
-    type Where = { studentId?: string; tutorId?: string; status?: any; OR?: Array<{ tutorId?: string; tutor?: { userId: string } }> };
+    type Where = { studentId?: string; tutorId?: string; status?: any };
     let whereClause: Where = {};
 
     if (isAdmin) {
@@ -124,12 +129,9 @@ const getBookings = async ({ userId, role, status, isAdmin }: GetBookingsParams)
         if (!tutorProfile) {
             return [];
         }
-        // Schema: Booking.tutorId = TutorProfile.id. Also match by tutor.userId for any wrong data.
+        // Schema: Booking.tutorId = TutorProfile.id. Query only by profile id (no fallback to userId).
         whereClause = {
-            OR: [
-                { tutorId: tutorProfile.id },
-                { tutor: { userId } },
-            ],
+            tutorId: tutorProfile.id,
             ...(status && { status }),
         };
     }
