@@ -10,10 +10,22 @@ import { adminRouter } from "./modules/admin/admin.route";
 
 const app: Application = express();
 
-// CORS: set on every response so preflight and actual requests never get blocked
+// CORS: allow frontend origin and credentials so cookies work; never block with 403 for origin
+const ALLOWED_ORIGINS = [
+  "http://localhost:3000",
+  "http://localhost:5173",
+  "http://127.0.0.1:3000",
+  "http://127.0.0.1:5173",
+  "https://skill-bridge-one-pi.vercel.app",
+  "https://skill-bridge-eight.vercel.app",
+];
+
 function corsHeaders(req: Request, res: Response, next: NextFunction) {
-  const origin = req.headers.origin;
-  res.setHeader("Access-Control-Allow-Origin", origin || "*");
+  const origin = (req.headers.origin ?? req.headers.referer ?? "").toString().replace(/\/$/, "").split("?")[0].trim();
+  const allowOrigin = origin && (ALLOWED_ORIGINS.includes(origin) || origin.endsWith(".vercel.app"))
+    ? origin
+    : ALLOWED_ORIGINS[0];
+  res.setHeader("Access-Control-Allow-Origin", allowOrigin);
   res.setHeader("Access-Control-Allow-Credentials", "true");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Origin, X-Requested-With, Cookie");
