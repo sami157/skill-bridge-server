@@ -96,9 +96,10 @@ const completeBooking = async (bookingId: string, tutorId: string) => {
     return completedBooking;
 };
 
-const getBookings = async ({ userId, role, status }: GetBookingsParams) => {
-    const whereClause =
-        role === "STUDENT"
+const getBookings = async ({ userId, role, status, isAdmin }: GetBookingsParams) => {
+    const whereClause = isAdmin
+        ? { ...(status && { status }) }
+        : role === "STUDENT"
             ? { studentId: userId, ...(status && { status }) }
             : { tutorId: userId, ...(status && { status }) };
 
@@ -125,7 +126,7 @@ const getBookings = async ({ userId, role, status }: GetBookingsParams) => {
     return bookings;
 };
 
-const getBookingById = async (bookingId: string, userId: string, role: Role) => {
+const getBookingById = async (bookingId: string, userId: string, role: Role, isAdmin?: boolean) => {
     const booking = await prisma.booking.findUnique({
         where: { id: bookingId },
         include: {
@@ -149,12 +150,13 @@ const getBookingById = async (bookingId: string, userId: string, role: Role) => 
         throw new Error("Booking not found");
     }
 
-    if (role === Role.STUDENT && booking.studentId !== userId) {
-        throw new Error("You are not allowed to view this booking");
-    }
-
-    if (role === Role.TUTOR && booking.tutorId !== userId) {
-        throw new Error("You are not allowed to view this booking");
+    if (!isAdmin) {
+        if (role === Role.STUDENT && booking.studentId !== userId) {
+            throw new Error("You are not allowed to view this booking");
+        }
+        if (role === Role.TUTOR && booking.tutorId !== userId) {
+            throw new Error("You are not allowed to view this booking");
+        }
     }
 
     return booking;

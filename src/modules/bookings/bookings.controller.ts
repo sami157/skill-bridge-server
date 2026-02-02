@@ -5,7 +5,9 @@ import { Role } from "../../../generated/prisma/enums";
 
 const createBooking = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const booking = await bookingsService.createBooking(req.body);
+        const studentId = req.user?.id!;
+        const { tutorId, startTime, endTime } = req.body;
+        const booking = await bookingsService.createBooking({ studentId, tutorId, startTime, endTime });
         res.status(201).json({ success: true, data: booking });
     } catch (error: any) {
         res.status(400).json({ success: false, message: "Failed to create booking", details: error });
@@ -42,7 +44,8 @@ const getBookings = async (req: Request, res: Response, next: NextFunction) => {
         const { status } = req.query;
         const userId = req.user?.id!;
         const role = req.user?.role!;
-        const bookings = await bookingsService.getBookings({ userId, role, status: status as any });
+        const isAdmin = role === "ADMIN";
+        const bookings = await bookingsService.getBookings({ userId, role, status: status as any, isAdmin });
         res.status(200).json({ success: true, data: bookings });
     } catch (error: any) {
         res.status(400).json({ success: false, message: "Failed to retrieve bookings", details: error });
@@ -55,7 +58,8 @@ const getBookingById = async (req: Request, res: Response, next: NextFunction) =
         const { bookingId } = req.params;
         const userId = req.user?.id!;
         const role = req.user?.role!;
-        const booking = await bookingsService.getBookingById(bookingId as string, userId, role as Role);
+        const isAdmin = role === "ADMIN";
+        const booking = await bookingsService.getBookingById(bookingId as string, userId, role as Role, isAdmin);
         res.status(200).json({ success: true, data: booking });
     } catch (error: any) {
         res.status(400).json({ success: false, message: "Failed to retrieve booking", details: error });
@@ -66,7 +70,9 @@ const getBookingById = async (req: Request, res: Response, next: NextFunction) =
 const createReview = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const studentId = req.user?.id!;
-        const review = await bookingsService.createReview({ ...req.body, studentId });
+        const bookingId = req.params.bookingId!;
+        const { rating, comment } = req.body;
+        const review = await bookingsService.createReview({ bookingId, studentId, rating, comment });
         res.status(201).json({ success: true, data: review });
     } catch (error: any) {
         res.status(400).json({ success: false, message: "Failed to create review", details: error });

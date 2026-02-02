@@ -69,7 +69,7 @@ export const auth = betterAuth({
   trustedOrigins,
   user: {
     additionalFields: {
-      role: { type: "string", input: false },
+      role: { type: "string", input: true },
     },
   },
   advanced: {
@@ -88,14 +88,22 @@ export const auth = betterAuth({
   databaseHooks: {
     user: {
       create: {
+        before: async (user) => {
+          const role = (user as { role?: string }).role;
+          const allowed = role === "STUDENT" || role === "TUTOR";
+          if (!allowed) {
+            (user as { role: string }).role = "STUDENT";
+          }
+          return user;
+        },
         after: async (user, _context) => {
           const emailMasked = maskEmail(user?.email as string | undefined);
           console.log("[Better Auth] signup: user created in DB", { id: user?.id, email: emailMasked });
           try {
             const found = user?.id
-              ? await prisma.user.findUnique({ where: { id: user.id }, select: { id: true, email: true, name: true } })
+              ? await prisma.user.findUnique({ where: { id: user.id }, select: { id: true, email: true, name: true, role: true } })
               : null;
-            console.log("[Better Auth] signup: DB verification", found ? "user found" : "user NOT found", found ? { id: found.id, email: maskEmail(found.email) } : {});
+            console.log("[Better Auth] signup: DB verification", found ? "user found" : "user NOT found", found ? { id: found.id, email: maskEmail(found.email), role: (found as { role?: string }).role } : {});
           } catch (e) {
             console.error("[Better Auth] signup: DB verification error", e);
           }

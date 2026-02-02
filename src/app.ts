@@ -6,6 +6,7 @@ import { subjectRouter } from "./modules/subjects/subjects.route";
 import { tutorRouter } from "./modules/tutors/tutors.route";
 import { bookingRouter } from "./modules/bookings/bookings.route";
 import { usersRouter } from "./modules/users/users.route";
+import { adminRouter } from "./modules/admin/admin.route";
 
 const app: Application = express();
 
@@ -59,11 +60,12 @@ app.get("/api/auth/debug-credentials", async (req, res) => {
 
 app.use("/api/auth", toNodeHandler(auth));
 
-app.use('/categories', categoryRouter)
-app.use('/subjects', subjectRouter)
-app.use('/tutors', tutorRouter)
-app.use('/bookings', bookingRouter)
-app.use('/users', usersRouter)
+app.use('/categories', categoryRouter);
+app.use('/subjects', subjectRouter);
+app.use('/tutors', tutorRouter);
+app.use('/bookings', bookingRouter);
+app.use('/users', usersRouter);
+app.use('/admin', adminRouter);
 
 app.get("/", (req, res) => {
     res.send("Hello, this is Skill Bridge server!");

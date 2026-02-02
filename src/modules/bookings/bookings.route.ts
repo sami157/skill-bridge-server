@@ -15,7 +15,7 @@ router.patch("/:bookingId/complete",verifyAuth(UserRole.TUTOR),bookingsControlle
 );
 
 
-router.get("/",verifyAuth(UserRole.STUDENT, UserRole.TUTOR),bookingsController.getBookings
+router.get("/",verifyAuth(UserRole.STUDENT, UserRole.TUTOR, UserRole.ADMIN),bookingsController.getBookings
 );
 
 

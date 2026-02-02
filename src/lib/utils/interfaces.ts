@@ -33,8 +33,9 @@ interface CreateBookingPayload {
 
 interface GetBookingsParams {
     userId: string;
-    role: Omit<Role, "ADMIN">;
+    role: Role;
     status?: BookingStatus;
+    isAdmin?: boolean;
 }
 
 interface CreateReviewInput {

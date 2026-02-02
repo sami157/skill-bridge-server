@@ -4,7 +4,8 @@ import type { TutorSearchFilters } from "../../lib/utils/interfaces";
 
 const createTutorProfile = async (req: Request, res: Response) => {
     try {
-        const result = await tutorProfileService.createTutorProfile(req.body);
+        const userId = req.user?.id!;
+        const result = await tutorProfileService.createTutorProfile({ ...req.body, userId });
         res.status(200).json({
             success: true,
             data: result
@@ -20,7 +21,8 @@ const createTutorProfile = async (req: Request, res: Response) => {
 
 const updateTutorProfile = async (req: Request, res: Response) => {
     try {
-        const result = await tutorProfileService.updateTutorProfile(req.body);
+        const userId = req.user?.id!;
+        const result = await tutorProfileService.updateTutorProfile({ ...req.body, userId });
         res.status(200).json({
             success: true,
             data: result
@@ -55,7 +57,7 @@ const getAllTutorProfiles = async (req: Request, res: Response) => {
 const getTutorProfileById = async (req: Request, res: Response) => {
     try {
         const tutorId = req.params.id;
-        const result = await tutorProfileService.getTutorProfileById(tutorId as string);  
+        const result = await tutorProfileService.getTutorProfileById(tutorId as string);
 
         res.status(200).json({
             success: true,
@@ -68,11 +70,31 @@ const getTutorProfileById = async (req: Request, res: Response) => {
             details: error
         });
     }
-}
+};
+
+const getMyTutorProfile = async (req: Request, res: Response) => {
+    try {
+        const userId = req.user?.id!;
+        const result = await tutorProfileService.getTutorProfileByUserId(userId);
+
+        res.status(200).json({
+            success: true,
+            data: result ?? null,
+            message: result ? undefined : "Tutor profile not found"
+        });
+    } catch (error) {
+        res.status(400).json({
+            success: false,
+            message: "Failed to get tutor profile",
+            details: error
+        });
+    }
+};
 
 export {
     createTutorProfile,
     updateTutorProfile,
     getAllTutorProfiles,
-    getTutorProfileById
+    getTutorProfileById,
+    getMyTutorProfile,
 };

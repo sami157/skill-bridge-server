@@ -1,9 +1,7 @@
 import { prisma } from "../../lib/prisma";
-import type { UpdateStudentProfileInput } from "../../lib/utils/interfaces";
 
-const getStudentProfile = async (userId: string) => {
-    const user = await prisma.user.findUnique({
-        where: { id: userId },
+const getAllUsers = async () => {
+    const users = await prisma.user.findMany({
         select: {
             id: true,
             name: true,
@@ -15,21 +13,15 @@ const getStudentProfile = async (userId: string) => {
             createdAt: true,
             updatedAt: true,
         },
+        orderBy: { createdAt: "desc" },
     });
-
-    if (!user) throw new Error("User not found");
-
-    return user;
+    return users;
 };
 
-const updateStudentProfile = async (userId: string, data: UpdateStudentProfileInput) => {
+const updateUserStatus = async (userId: string, active: boolean) => {
     const updatedUser = await prisma.user.update({
         where: { id: userId },
-        data: {
-            name: data.name,
-            phone: data.phone,
-            image: data.image,
-        },
+        data: { active },
         select: {
             id: true,
             name: true,
@@ -42,11 +34,10 @@ const updateStudentProfile = async (userId: string, data: UpdateStudentProfileIn
             updatedAt: true,
         },
     });
-
     return updatedUser;
 };
 
-export const usersService = {
-    getStudentProfile,
-    updateStudentProfile,
+export const adminService = {
+    getAllUsers,
+    updateUserStatus,
 };
