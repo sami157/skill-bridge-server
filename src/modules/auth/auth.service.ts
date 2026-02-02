@@ -74,3 +74,37 @@ export async function verifyCredentials(email: string, password: string) {
     emailVerified: user.emailVerified,
   };
 }
+
+/**
+ * Set password for an existing user (e.g. after migrating from Better Auth).
+ * Finds user by email and credential account, updates password to bcrypt hash.
+ */
+export async function setPasswordForEmail(email: string, password: string): Promise<boolean> {
+  const normalizedEmail = email.trim().toLowerCase();
+  const user = await prisma.user.findUnique({
+    where: { email: normalizedEmail },
+    include: { accounts: { where: { providerId: "credential" }, take: 1 } },
+  });
+  if (!user) return false;
+  const credentialAccount = user.accounts[0];
+  if (!credentialAccount) {
+    // No credential account - create one
+    const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
+    await prisma.account.create({
+      data: {
+        id: crypto.randomUUID(),
+        accountId: normalizedEmail,
+        providerId: "credential",
+        userId: user.id,
+        password: hashedPassword,
+      },
+    });
+    return true;
+  }
+  const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
+  await prisma.account.update({
+    where: { id: credentialAccount.id },
+    data: { password: hashedPassword },
+  });
+  return true;
+}

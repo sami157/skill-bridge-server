@@ -1067,6 +1067,7 @@ async function verifyCredentials2(req, res) {
 // src/modules/auth/auth.route.ts
 var router7 = Router2();
 router7.post("/register", register);
+router7.post("/sign-up/email", register);
 router7.post("/verify-credentials", verifyCredentials2);
 var authRouter = router7;
 
