@@ -942,8 +942,13 @@ function corsHeaders(req, res, next) {
 app.use(corsHeaders);
 app.use(express6.json());
 app.use("/api/auth", (req, _res, next) => {
-  const origin = req.headers.origin ?? req.headers.referer ?? "(none)";
-  console.log("[Better Auth] request Origin:", origin, "| path:", req.method, req.path);
+  const raw = req.headers;
+  raw.get = function get2(name) {
+    const key = Object.keys(raw).find((k) => k !== "get" && k.toLowerCase() === name.toLowerCase());
+    const val = key ? raw[key] : void 0;
+    if (val === void 0) return null;
+    return Array.isArray(val) ? val.join(", ") : val;
+  };
   next();
 });
 app.get("/api/auth/debug-db", async (_req, res) => {

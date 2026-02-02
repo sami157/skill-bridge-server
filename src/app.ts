@@ -1,3 +1,4 @@
+import type { IncomingHttpHeaders } from "node:http";
 import { toNodeHandler } from "better-auth/node";
 import express, { type Application, type Request, type Response, type NextFunction } from "express";
 import { categoryRouter } from "./modules/categories/category.route";
@@ -38,10 +39,16 @@ app.use(corsHeaders);
 
 app.use(express.json());
 
-// Debug: log request Origin for auth routes (shows in Vercel logs)
-app.use("/api/auth", (req, _res, next) => {
-  const origin = req.headers.origin ?? req.headers.referer ?? "(none)";
-  console.log("[Better Auth] request Origin:", origin, "| path:", req.method, req.path);
+// Fix "Illegal invocation": Better Auth (or deps) may call headers.get(name) with detached reference.
+// Express req.headers has no .get(); add a get() that works when called in any context (Node + Vercel).
+app.use("/api/auth", (req: Request, _res, next) => {
+  const raw = req.headers as IncomingHttpHeaders & Record<string, string | string[] | undefined>;
+  raw.get = function get(name: string): string | null {
+    const key = Object.keys(raw).find((k) => k !== "get" && k.toLowerCase() === name.toLowerCase());
+    const val = key ? raw[key] : undefined;
+    if (val === undefined) return null;
+    return Array.isArray(val) ? val.join(", ") : val;
+  };
   next();
 });
 
