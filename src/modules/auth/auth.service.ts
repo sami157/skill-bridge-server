@@ -52,6 +52,16 @@ export async function registerUser(data: {
     },
   });
 
+  // So new tutors show in GET /tutors; they can complete profile (price, subjects, bio) later.
+  if (role === "TUTOR") {
+    await prisma.tutorProfile.create({
+      data: {
+        userId: user.id,
+        pricePerHour: 0,
+      },
+    });
+  }
+
   return user;
 }
 
