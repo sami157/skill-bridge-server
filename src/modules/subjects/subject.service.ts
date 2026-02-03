@@ -35,8 +35,24 @@ const getSubjectsByCategory = async (categoryId: string) => {
     });
 };
 
+const updateSubject = async (id: string, data: { name?: string; categoryId?: string }) => {
+    const updateData: { name?: string; categoryId?: string } = {};
+    if (data.name !== undefined) updateData.name = data.name;
+    if (data.categoryId !== undefined) updateData.categoryId = data.categoryId;
+    return prisma.subject.update({
+        where: { id },
+        data: updateData,
+    });
+};
+
+const deleteSubject = async (id: string) => {
+    return prisma.subject.delete({ where: { id } });
+};
+
 export const subjectService =  {
     createSubject,
     getAllSubjects,
-    getSubjectsByCategory
-}
+    getSubjectsByCategory,
+    updateSubject,
+    deleteSubject,
+};

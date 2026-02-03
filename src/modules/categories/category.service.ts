@@ -23,10 +23,30 @@ const getAllCategories = async () => {
         }
     });
     return result;
-}
+};
 
+const updateCategory = async (id: string, data: { name: string }) => {
+    return prisma.category.update({
+        where: { id },
+        data: { name: data.name },
+    });
+};
+
+const deleteCategory = async (id: string) => {
+    const category = await prisma.category.findUnique({
+        where: { id },
+        include: { subjects: true },
+    });
+    if (!category) throw new Error("Category not found");
+    if (category.subjects.length > 0) {
+        throw new Error("Cannot delete category that has subjects. Delete or move subjects first.");
+    }
+    return prisma.category.delete({ where: { id } });
+};
 
 export const categoryService =  { 
     createCategory, 
-    getAllCategories 
+    getAllCategories,
+    updateCategory,
+    deleteCategory,
 };
