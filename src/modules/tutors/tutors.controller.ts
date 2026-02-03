@@ -38,8 +38,18 @@ const updateTutorProfile = async (req: Request, res: Response) => {
 
 const getAllTutorProfiles = async (req: Request, res: Response) => {
     try {
-        const filters = req.query;
-        const result = await tutorProfileService.getAllTutorProfiles(filters as TutorSearchFilters);
+        const q = req.query;
+        const searchRaw = q.search != null ? (Array.isArray(q.search) ? q.search[0] : q.search) : "";
+        const searchVal = typeof searchRaw === "string" ? searchRaw.trim() : "";
+        const filters: TutorSearchFilters = {
+            ...(q.categoryId && { categoryId: Array.isArray(q.categoryId) ? (q.categoryId[0] as string) : (q.categoryId as string) }),
+            ...(q.subjectId && { subjectId: Array.isArray(q.subjectId) ? (q.subjectId[0] as string) : (q.subjectId as string) }),
+            ...(q.minRating != null && { minRating: parseFloat(Array.isArray(q.minRating) ? q.minRating[0] : q.minRating) as number }),
+            ...(q.maxPrice != null && { maxPrice: parseFloat(Array.isArray(q.maxPrice) ? q.maxPrice[0] : q.maxPrice) as number }),
+            ...(q.sortBy && { sortBy: (Array.isArray(q.sortBy) ? q.sortBy[0] : q.sortBy) as TutorSearchFilters["sortBy"] }),
+            ...(searchVal !== "" && { search: searchVal }),
+        };
+        const result = await tutorProfileService.getAllTutorProfiles(filters);
 
         res.status(200).json({
             success: true,
