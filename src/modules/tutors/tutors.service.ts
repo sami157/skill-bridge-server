@@ -47,7 +47,8 @@ const updateTutorProfile = async (data: UpdateTutorProfileInput) => {
 };
 
 const getAllTutorProfiles = async (filters: TutorSearchFilters) => {
-    const { subjectId, categoryId, minRating, maxPrice, sortBy } = filters;
+    const { subjectId, categoryId, minRating, maxPrice, sortBy, search } = filters;
+    const searchTrimmed = typeof search === "string" ? search.trim() : "";
 
     let orderBy: any = undefined;
 
@@ -67,36 +68,53 @@ const getAllTutorProfiles = async (filters: TutorSearchFilters) => {
         orderBy = { pricePerHour: "desc" };
     }
 
+    const baseWhere: any = {
+        ...(minRating !== undefined && {
+            rating: {
+                gte: minRating,
+            },
+        }),
+
+        ...(maxPrice !== undefined && {
+            pricePerHour: {
+                lte: maxPrice,
+            },
+        }),
+
+        ...(subjectId && {
+            subjects: {
+                some: {
+                    id: subjectId,
+                },
+            },
+        }),
+
+        ...(categoryId && {
+            subjects: {
+                some: {
+                    categoryId,
+                },
+            },
+        }),
+    };
+
+    const where = searchTrimmed
+        ? {
+              AND: [
+                  baseWhere,
+                  {
+                      OR: [
+                          { user: { name: { contains: searchTrimmed, mode: "insensitive" as const } } },
+                          { bio: { contains: searchTrimmed, mode: "insensitive" as const } },
+                          { subjects: { some: { name: { contains: searchTrimmed, mode: "insensitive" as const } } } },
+                      ],
+                  },
+              ],
+          }
+        : baseWhere;
+
     const tutors = await prisma.tutorProfile.findMany({
-        where: {
-            ...(minRating !== undefined && {
-                rating: {
-                    gte: minRating,
-                },
-            }),
-
-            ...(maxPrice !== undefined && {
-                pricePerHour: {
-                    lte: maxPrice,
-                },
-            }),
-
-            ...(subjectId && {
-                subjects: {
-                    some: {
-                        id: subjectId,
-                    },
-                },
-            }),
-
-            ...(categoryId && {
-                subjects: {
-                    some: {
-                        categoryId,
-                    },
-                },
-            }),
-        },
+        where,
 
         orderBy,
 

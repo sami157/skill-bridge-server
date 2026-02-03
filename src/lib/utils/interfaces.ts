@@ -22,6 +22,7 @@ interface TutorSearchFilters {
     minRating?: number;
     maxPrice?: number;
     sortBy?: "rating_asc" | "rating_desc" | "price_asc" | "price_desc";
+    search?: string;
 }
 
 /** Booking creation: tutorUserId must be the tutor's User.id (not TutorProfile.id). */
