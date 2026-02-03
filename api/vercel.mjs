@@ -33,9 +33,28 @@ var getAllCategories = async () => {
   });
   return result;
 };
+var updateCategory = async (id, data) => {
+  return prisma.category.update({
+    where: { id },
+    data: { name: data.name }
+  });
+};
+var deleteCategory = async (id) => {
+  const category = await prisma.category.findUnique({
+    where: { id },
+    include: { subjects: true }
+  });
+  if (!category) throw new Error("Category not found");
+  if (category.subjects.length > 0) {
+    throw new Error("Cannot delete category that has subjects. Delete or move subjects first.");
+  }
+  return prisma.category.delete({ where: { id } });
+};
 var categoryService = {
   createCategory,
-  getAllCategories
+  getAllCategories,
+  updateCategory,
+  deleteCategory
 };
 
 // src/modules/categories/category.controller.ts
@@ -66,6 +85,38 @@ var createCategory2 = async (req, res) => {
       success: false,
       message: "Internal Server Error",
       details: error
+    });
+  }
+};
+var updateCategory2 = async (req, res) => {
+  try {
+    const id = req.params.id;
+    const { name } = req.body;
+    if (!name || typeof name !== "string" || !name.trim()) {
+      return res.status(400).json({ success: false, message: "Name is required" });
+    }
+    const result = await categoryService.updateCategory(id, { name: name.trim() });
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message || "Failed to update category"
+    });
+  }
+};
+var deleteCategory2 = async (req, res) => {
+  try {
+    const id = req.params.id;
+    await categoryService.deleteCategory(id);
+    res.status(200).json({ success: true });
+  } catch (error) {
+    const msg = error.message;
+    if (msg?.includes("not found")) {
+      return res.status(404).json({ success: false, message: msg });
+    }
+    res.status(400).json({
+      success: false,
+      message: msg || "Failed to delete category"
     });
   }
 };
@@ -141,8 +192,10 @@ var verifyAuth = (...roles) => {
 
 // src/modules/categories/category.route.ts
 var router = express.Router();
-router.post("/", verifyAuth("ADMIN" /* ADMIN */), createCategory2);
 router.get("/", getAllCategories2);
+router.post("/", verifyAuth("ADMIN" /* ADMIN */), createCategory2);
+router.put("/:id", verifyAuth("ADMIN" /* ADMIN */), updateCategory2);
+router.delete("/:id", verifyAuth("ADMIN" /* ADMIN */), deleteCategory2);
 var categoryRouter = router;
 
 // src/modules/subjects/subjects.route.ts
@@ -180,16 +233,31 @@ var getSubjectsByCategory = async (categoryId) => {
     orderBy: { name: "asc" }
   });
 };
+var updateSubject = async (id, data) => {
+  const updateData = {};
+  if (data.name !== void 0) updateData.name = data.name;
+  if (data.categoryId !== void 0) updateData.categoryId = data.categoryId;
+  return prisma.subject.update({
+    where: { id },
+    data: updateData
+  });
+};
+var deleteSubject = async (id) => {
+  return prisma.subject.delete({ where: { id } });
+};
 var subjectService = {
   createSubject,
   getAllSubjects,
-  getSubjectsByCategory
+  getSubjectsByCategory,
+  updateSubject,
+  deleteSubject
 };
 
 // src/modules/subjects/subject.controller.ts
 var createSubject2 = async (req, res) => {
   try {
     const result = await subjectService.createSubject(req.body);
+    res.status(201).json({ success: true, data: result });
   } catch (error) {
     res.status(400).json({
       success: false,
@@ -229,12 +297,49 @@ var getSubjectsByCategory2 = async (req, res) => {
     });
   }
 };
+var updateSubject2 = async (req, res) => {
+  try {
+    const id = req.params.id;
+    const { name, categoryId } = req.body;
+    const updateData = {};
+    if (name !== void 0 && typeof name === "string") updateData.name = name.trim();
+    if (categoryId !== void 0 && typeof categoryId === "string") updateData.categoryId = categoryId;
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({ success: false, message: "Provide name or categoryId to update" });
+    }
+    const result = await subjectService.updateSubject(id, updateData);
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message || "Failed to update subject"
+    });
+  }
+};
+var deleteSubject2 = async (req, res) => {
+  try {
+    const id = req.params.id;
+    await subjectService.deleteSubject(id);
+    res.status(200).json({ success: true });
+  } catch (error) {
+    const msg = error.message;
+    if (msg?.includes("Record to delete does not exist") || msg?.includes("not found")) {
+      return res.status(404).json({ success: false, message: "Subject not found" });
+    }
+    res.status(400).json({
+      success: false,
+      message: msg || "Failed to delete subject"
+    });
+  }
+};
 
 // src/modules/subjects/subjects.route.ts
 var router2 = express2.Router();
-router2.post("/", verifyAuth("ADMIN" /* ADMIN */), createSubject2);
 router2.get("/", getAllSubjects2);
-router2.get("/:categoryId", getSubjectsByCategory2);
+router2.post("/", verifyAuth("ADMIN" /* ADMIN */), createSubject2);
+router2.put("/:id", verifyAuth("ADMIN" /* ADMIN */), updateSubject2);
+router2.delete("/:id", verifyAuth("ADMIN" /* ADMIN */), deleteSubject2);
+router2.get("/by-category/:categoryId", getSubjectsByCategory2);
 var subjectRouter = router2;
 
 // src/modules/tutors/tutors.route.ts
@@ -278,7 +383,8 @@ var updateTutorProfile = async (data) => {
   return result;
 };
 var getAllTutorProfiles = async (filters) => {
-  const { subjectId, categoryId, minRating, maxPrice, sortBy } = filters;
+  const { subjectId, categoryId, minRating, maxPrice, sortBy, search } = filters;
+  const searchTrimmed = typeof search === "string" ? search.trim() : "";
   let orderBy = void 0;
   if (sortBy === "rating_asc") {
     orderBy = { rating: "asc" };
@@ -292,33 +398,46 @@ var getAllTutorProfiles = async (filters) => {
   if (sortBy === "price_desc") {
     orderBy = { pricePerHour: "desc" };
   }
-  const tutors = await prisma.tutorProfile.findMany({
-    where: {
-      ...minRating !== void 0 && {
-        rating: {
-          gte: minRating
-        }
-      },
-      ...maxPrice !== void 0 && {
-        pricePerHour: {
-          lte: maxPrice
-        }
-      },
-      ...subjectId && {
-        subjects: {
-          some: {
-            id: subjectId
-          }
-        }
-      },
-      ...categoryId && {
-        subjects: {
-          some: {
-            categoryId
-          }
+  const baseWhere = {
+    ...minRating !== void 0 && {
+      rating: {
+        gte: minRating
+      }
+    },
+    ...maxPrice !== void 0 && {
+      pricePerHour: {
+        lte: maxPrice
+      }
+    },
+    ...subjectId && {
+      subjects: {
+        some: {
+          id: subjectId
         }
       }
     },
+    ...categoryId && {
+      subjects: {
+        some: {
+          categoryId
+        }
+      }
+    }
+  };
+  const where = searchTrimmed ? {
+    AND: [
+      baseWhere,
+      {
+        OR: [
+          { user: { name: { contains: searchTrimmed, mode: "insensitive" } } },
+          { bio: { contains: searchTrimmed, mode: "insensitive" } },
+          { subjects: { some: { name: { contains: searchTrimmed, mode: "insensitive" } } } }
+        ]
+      }
+    ]
+  } : baseWhere;
+  const tutors = await prisma.tutorProfile.findMany({
+    where,
     orderBy,
     include: {
       user: {
@@ -452,7 +571,17 @@ var updateTutorProfile2 = async (req, res) => {
 };
 var getAllTutorProfiles2 = async (req, res) => {
   try {
-    const filters = req.query;
+    const q = req.query;
+    const searchRaw = q.search != null ? Array.isArray(q.search) ? q.search[0] : q.search : "";
+    const searchVal = typeof searchRaw === "string" ? searchRaw.trim() : "";
+    const filters = {
+      ...q.categoryId && { categoryId: Array.isArray(q.categoryId) ? q.categoryId[0] : q.categoryId },
+      ...q.subjectId && { subjectId: Array.isArray(q.subjectId) ? q.subjectId[0] : q.subjectId },
+      ...q.minRating != null && { minRating: parseFloat(Array.isArray(q.minRating) ? q.minRating[0] : q.minRating) },
+      ...q.maxPrice != null && { maxPrice: parseFloat(Array.isArray(q.maxPrice) ? q.maxPrice[0] : q.maxPrice) },
+      ...q.sortBy && { sortBy: Array.isArray(q.sortBy) ? q.sortBy[0] : q.sortBy },
+      ...searchVal !== "" && { search: searchVal }
+    };
     const result = await tutorProfileService.getAllTutorProfiles(filters);
     res.status(200).json({
       success: true,
@@ -1078,6 +1207,14 @@ async function registerUser(data) {
       updatedAt: true
     }
   });
+  if (role === "TUTOR") {
+    await prisma.tutorProfile.create({
+      data: {
+        userId: user.id,
+        pricePerHour: 0
+      }
+    });
+  }
   return user;
 }
 async function verifyCredentials(email, password) {
